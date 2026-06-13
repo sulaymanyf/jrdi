@@ -25,6 +25,13 @@ on:
 permissions:
   contents: read
 
+# actions/checkout@v4 and actions/setup-java@v4 still ship with a
+# Node.js 20 runtime. Force the newer Node.js 24 runtime to silence
+# GitHub's deprecation warning (it becomes the default on 2026-06-16
+# and Node 20 is removed 2026-09-16).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   verify:
     name: mvn verify (${{ matrix.os }})
