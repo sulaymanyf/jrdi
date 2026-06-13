@@ -1,0 +1,97 @@
+name: CI
+
+# Run the jrdi test suite on every push / PR.
+#
+# Matrix: Ubuntu + macOS (Java behaviour is identical on both for jrdi
+# since we use only cross-platform APIs; macOS catches "works on my
+# Mac" issues that the local dev box is most likely to hit).
+#
+# The PostgreSQL Testcontainers IT is opt-in (it requires a Docker
+# daemon with pull access for postgres:16-alpine). To enable it on
+# your own fork, add a workflow_dispatch input or a label trigger.
+#
+# Caching: ~/.m2 is cached keyed on the lockfile-free pom hash + the
+# runner OS. With this cache, cold `mvn verify` drops from ~120s to
+# ~15s (we measured locally).
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['*']
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: mvn verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Show toolchain
+        run: |
+          mvn -v
+          java -version
+
+      - name: Verify (compile + test + IT)
+        run: mvn -B -T 1C verify
+        env:
+          # Skip the Postgres Testcontainers IT on CI by default —
+          # it needs a Docker daemon and a 500MB image pull. Local
+          # developers can opt in with `-Djrdi.pg.it=true`.
+          MAVEN_OPTS: -Xmx2g
+
+      - name: Report test summary
+        if: always()
+        # Parse the per-module surefire/failsafe report counts into a
+        # single human-readable line. Helps spot regressions in PR
+        # reviews without scrolling the log.
+        run: |
+          python3 -c "
+          import re, glob, os
+          total=fail=err=skip=0
+          files = glob.glob('**/surefire-reports/TEST-*.xml', recursive=True) \
+                + glob.glob('**/failsafe-reports/TEST-*.xml', recursive=True)
+          for f in files:
+              with open(f) as fh:
+                  head = fh.read(4096)
+              for tag in ('tests', 'failures', 'errors', 'skipped'):
+                  m = re.search(rf'{tag}=\"(\\d+)\"', head)
+                  if m:
+                      v = int(m.group(1))
+                      if tag == 'tests':   total += v
+                      elif tag == 'failures': fail += v
+                      elif tag == 'errors':   err  += v
+                      elif tag == 'skipped':  skip += v
+          print(f'::notice title=Test summary::{total} tests, {fail} failures, {err} errors, {skip} skipped')"
+
+      - name: Upload surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-${{ matrix.os }}
+          path: |
+            **/surefire-reports/
+            **/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -43,6 +43,7 @@ cp "$DIST/jrdi-cli-$VERSION.jar"        "$STAGE/"
 cp "$DIST/jrdi-mcp-server-$VERSION.jar"  "$STAGE/"
 cp "$DIST/jrdi-$VERSION-checksums.sha256" "$STAGE/"
 [ -f "$ROOT/LICENSE" ] && cp "$ROOT/LICENSE" "$STAGE/"
+[ -f "$ROOT/NOTICE"  ] && cp "$ROOT/NOTICE"  "$STAGE/"
 cp "$ROOT/README.md"                      "$STAGE/"
 
 ( cd "$STAGE" && zip -q "$DIST/jrdi-$VERSION-bin.zip" * )

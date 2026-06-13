@@ -1,0 +1,28 @@
+jrdi — Java RPC Dependency Intelligence
+Copyright 2026 sulaymanyf
+
+This product includes software developed by the Apache Software Foundation
+(such as ASM — the parent project of which is licensed under the BSD license,
+and Apache Commons utilities under the Apache License 2.0).
+
+This product includes software developed by the Lucene / Solr project
+(Apache Lucene — Apache License 2.0).
+
+This product includes software developed by the Flyway project
+(Apache License 2.0).
+
+This product includes CFR (Class File Reader) by Lee Benfield,
+licensed under the MIT License.
+
+This product includes JSqlParser, licensed under the Apache License 2.0
+or the LGPL (dual-licensed; the Apache 2.0 path is taken here).
+
+This product includes picocli, licensed under the Apache License 2.0.
+
+This product includes Jackson, licensed under the Apache License 2.0.
+
+A copy of the Apache License, Version 2.0 is included in the LICENSE file
+of this distribution. Source code, build instructions, and a complete list
+of dependencies with their licenses are available at:
+
+    https://github.com/sulaymanyf/jrdi
