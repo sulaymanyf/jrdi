@@ -55,6 +55,13 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: SPDX header check
+        # Every .java in the reactor must carry the Apache 2.0 SPDX
+        # header. Catches accidental omission when contributors add new
+        # source files. scripts/add-spdx.sh is idempotent and applies
+        # the header to any file that's missing it.
+        run: scripts/add-spdx.sh --check
+
       - name: Show toolchain
         run: |
           mvn -v
