@@ -1,0 +1,41 @@
+target/
+.idea/
+.vscode/
+*.iml
+*.iws/
+*.ipr
+*.iws
+.classpath
+
+# Eclipse
+.project
+.settings/
+.factorypath
+.classpath
+
+# Local caches
+.jrdi/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven wrapper (kept; the .mvn/ dir is committed)
+!.mvn/
+
+# Test artifacts left by `mvn verify`
+surefire-reports/
+failsafe-reports/
+dump*.txt
+
+# Examples — generated DBs from running the petclinic example
+examples/**/jrdi.db
+examples/**/jrdi.db-wal
+examples/**/jrdi.db-shm
