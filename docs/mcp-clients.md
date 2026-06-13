@@ -324,7 +324,7 @@ LLM 客户端的 MCP 配置:
 
 ## 12. 例子 / Examples
 
-完整端到端示例见 [`examples/petclinic-mini/`](../examples/petclinic-mini/README.md):
+完整端到端示例见 [`examples/petclinic-mini/`](https://github.com/sulaymanyf/jrdi/tree/master/examples/petclinic-mini):
 
 ```sh
 $ cd examples/petclinic-mini

@@ -3,10 +3,13 @@
 **一个把 Java 项目的依赖关系喂给 LLM 的 Model Context Protocol (MCP) 服务器。**
 
 [![CI](https://github.com/sulaymanyf/jrdi/actions/workflows/ci.yml/badge.svg)](https://github.com/sulaymanyf/jrdi/actions/workflows/ci.yml)
+[![Docs](https://github.com/sulaymanyf/jrdi/actions/workflows/docs.yml/badge.svg)](https://sulaymanyf.github.io/jrdi/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Java 21+](https://img.shields.io/badge/Java-21%2B-orange.svg)]()
 
 jrdi 把 JVM 项目(类、方法、字段、调用关系、Spring/Dubbo/MyBatis 框架元数据)抽取出来,存进 SQLite 或 PostgreSQL,然后通过 **16 个 MCP 工具 + 2 个资源 + 6 个 prompt 模板** 暴露给 LLM 客户端(Claude Code、Cursor、OpenCode、Cline 等)。
+
+📖 完整文档: **<https://sulaymanyf.github.io/jrdi/>**
 
 ---
 
@@ -15,10 +18,13 @@ jrdi 把 JVM 项目(类、方法、字段、调用关系、Spring/Dubbo/MyBatis 
 **An MCP server that exposes JVM project dependencies to LLM clients.**
 
 [![CI](https://github.com/sulaymanyf/jrdi/actions/workflows/ci.yml/badge.svg)](https://github.com/sulaymanyf/jrdi/actions/workflows/ci.yml)
+[![Docs](https://github.com/sulaymanyf/jrdi/actions/workflows/docs.yml/badge.svg)](https://sulaymanyf.github.io/jrdi/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Java 21+](https://img.shields.io/badge/Java-21%2B-orange.svg)]()
 
 jrdi extracts the dependency graph (classes, methods, fields, calls, Spring/Dubbo/MyBatis framework facts) from any JVM project, stores it in SQLite or PostgreSQL, and exposes **17 MCP tools + 2 resources + 6 prompt templates** to LLM clients (Claude Code, Cursor, OpenCode, Cline, etc.).
+
+📖 Full documentation: **<https://sulaymanyf.github.io/jrdi/>**
 
 ## 它能做什么 / What it does
 

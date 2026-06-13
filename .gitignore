@@ -42,3 +42,6 @@ examples/**/jrdi.db-shm
 
 # Release artifacts (built locally by scripts/package.sh; uploaded to GitHub Releases)
 dist/
+
+# MkDocs site build output (deployed to gh-pages by the docs CI job)
+site/

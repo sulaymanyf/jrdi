@@ -5,15 +5,15 @@
 
 ## Table of Contents
 
-1. [Goals & Non-Goals](#1-goals--non-goals)
+1. [Goals & Non-Goals](#1-goals-non-goals)
 2. [Layered Design](#2-layered-design)
 3. [Module Map (17 modules)](#3-module-map-17-modules)
-4. [Storage Schema (V1 + V2 + V3 + V4 + V5 + V6)](#4-storage-schema-v1--v2--v3--v4--v5--v6)
+4. [Storage Schema (V1 + V2 + V3 + V4 + V5 + V6 + V7 + V8 + V9)](#4-storage-schema-v1-v2-v3-v4-v5-v6-v7-v8-v9)
 5. [Indexing Pipeline (2-pass)](#5-indexing-pipeline-2-pass)
 6. [Cross-Jar CHA](#6-cross-jar-cha)
 7. [Incremental Indexing (P3.7)](#7-incremental-indexing-p37)
-8. [MCP Tool Surface (17 tools + 2 resources + 6 prompts)](#8-mcp-tool-surface-17-tools--2-resources--6-prompts)
-9. [Failure Modes & Mitigation](#9-failure-modes--mitigation)
+8. [MCP Tool Surface (17 tools + 2 resources + 6 prompts)](#8-mcp-tool-surface-17-tools-2-resources-6-prompts)
+9. [Failure Modes & Mitigation](#9-failure-modes-mitigation)
 10. [Notable Design Decisions](#10-notable-design-decisions)
 11. [Observability](#11-observability)
 12. [Known Limitations (post-M1)](#12-known-limitations-post-m1)

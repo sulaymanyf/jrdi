@@ -1,0 +1,6 @@
+# Pinned versions for the docs CI job (see .github/workflows/docs.yml).
+# Bump manually after testing locally with `pip install -U` and a
+# successful `mkdocs build --strict`.
+mkdocs==1.6.1
+mkdocs-material==9.6.7
+pymdown-extensions==10.14.3

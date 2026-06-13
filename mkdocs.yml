@@ -1,0 +1,132 @@
+# mkdocs.yml — jrdi documentation site
+#
+# Source: docs/*.md (existing files, no rewrite)
+# Output: site/ (gitignored, built by CI)
+# Theme:  Material (most popular MkDocs theme; built-in search,
+#         code highlighting, dark/light toggle, social cards)
+#
+# Deploy: GitHub Pages via the official "deploy" action. The CI job
+#         on the master branch builds the site and pushes to the
+#         `gh-pages` branch. URL will be
+#         https://sulaymanyf.github.io/jrdi/
+
+site_name: jrdi
+site_description: Java RPC Dependency Intelligence — an MCP server that exposes JVM project facts to LLM clients
+site_url: https://sulaymanyf.github.io/jrdi/
+site_author: sulaymanyf
+copyright: Copyright 2026 sulaymanyf — Apache License 2.0
+
+repo_name: sulaymanyf/jrdi
+repo_url: https://github.com/sulaymanyf/jrdi
+edit_uri: edit/master/docs/
+
+docs_dir: docs
+site_dir: site
+
+# Don't build the site during a normal `mvn verify` — the docs site is a
+# separate pipeline. This excludes `site/` from the Python build dir.
+exclude_docs: |
+  site/
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant        # SPA-style page transitions
+    - navigation.tracking       # anchor the active URL in the URL bar
+    - navigation.sections       # top-level sections in the sidebar
+    - navigation.indexes        # section index pages
+    - navigation.top            # back-to-top button
+    - navigation.footer         # prev/next at the bottom of every page
+    - toc.follow                # scroll the TOC to match the visible heading
+    - search.suggest            # autocomplete in the search bar
+    - search.highlight          # highlight matched terms on the page
+    - search.share              # shareable search URLs
+    - content.code.copy         # copy button on code blocks
+    - content.code.annotate     # inline code annotations
+    - content.tabs.link         # synced tabs across the page
+    - content.action.edit       # "Edit this page" link
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+markdown_extensions:
+  # Standard
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true             # ¶ anchor link on every heading
+      toc_depth: 3
+  # Material extras
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.caret
+  - pymdownx.smartsymbols
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  # Full-text search (Material's built-in; lightweight, works offline)
+  - search:
+      lang: en
+
+# Don't put the API reference in the nav by default — we don't have
+# one yet, and an empty page would be a dead link. Add later when
+# mkdocstrings pulls in our Javadoc.
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install: install.md
+      - Quickstart: quickstart.md
+  - User guide:
+      - MCP tools: mcp-tools.md
+      - MCP clients: mcp-clients.md
+  - Architecture: architecture.md
+  - Release notes: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sulaymanyf/jrdi
+  generator: false

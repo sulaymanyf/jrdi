@@ -1,0 +1,76 @@
+name: docs
+
+# Build the MkDocs site on every push / PR; deploy to GitHub Pages
+# only on the master branch (the user-facing public site).
+#
+# We pin mkdocs-material by hash. The plugin ecosystem moves fast and
+# a fresh release that breaks compat would otherwise surface as a
+# confusing red CI badge. We bump the pin manually after testing.
+#
+# Permissions: `pages: write` + `id-token: write` are required for the
+# official `actions/deploy-pages` action; `contents: read` for the
+# initial checkout.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+# Same Node 24 opt-in as the main CI workflow — see ci.yml.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't run multiple deploys in parallel; queue them.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: .github/requirements-docs.txt
+
+      - name: Install mkdocs + Material
+        run: pip install -r .github/requirements-docs.txt
+
+      - name: Build site (strict — fail on any broken link)
+        run: mkdocs build --strict
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

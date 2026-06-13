@@ -1,15 +1,14 @@
 # jrdi — Quickstart (5 min)
 
-> **完整文档已搬到 [`README.md`](../README.md) 和 [`docs/mcp-clients.md`](mcp-clients.md)。**
-> 本文件保留作为 5 分钟速查表。
+> This page is a quick-reference. Full install instructions are in [Install](install.md); full client config is in [MCP clients](mcp-clients.md).
 
-This page is a quick-reference; full docs are in [`README.md`](../README.md).
+## 1. Get the jar
 
-## 1. Build
+Either [download the prebuilt fat-jar](install.md#download-from-github-releases) or build from source:
 
 ```sh
-$ git clone <this-repo>
-$ cd java-mcp
+$ git clone https://github.com/sulaymanyf/jrdi.git
+$ cd jrdi
 $ JAVA_HOME=/path/to/jdk-21 mvn clean install -DskipTests
 ```
 
@@ -33,7 +32,7 @@ $ java -jar jrdi-cli/target/jrdi-cli-0.1.0-M1.jar index \
 
 ## 3. Wire to your LLM
 
-See [`docs/mcp-clients.md`](mcp-clients.md) for full config for Claude Code, OpenCode, Cursor, Cline, Continue, Zed, Windsurf, Roo.
+See [MCP clients](mcp-clients.md) for full config for Claude Code, OpenCode, Cursor, Cline, Continue, Zed, Windsurf, Roo.
 
 Quick example for **Claude Code** (`<project>/.mcp.json`):
 
@@ -72,9 +71,9 @@ Quick example for **Claude Code** (`<project>/.mcp.json`):
 
 ## Next
 
-- [`README.md`](../README.md) — 完整中英介绍
-- [`docs/mcp-clients.md`](mcp-clients.md) — 所有主流 LLM 客户端配置
-- [`docs/mcp-tools.md`](mcp-tools.md) — 12 个工具的 JSON-RPC 契约
-- [`docs/architecture.md`](architecture.md) — 17 模块架构
-- [`RELEASE-NOTES-0.1.0-M1.md`](../RELEASE-NOTES-0.1.0-M1.md) — 0.1.0-M1 发布说明
-- [`examples/petclinic-mini/`](../examples/petclinic-mini/) — 端到端示例
+- [Home](index.md) — 完整中英介绍
+- [MCP clients](mcp-clients.md) — 所有主流 LLM 客户端配置
+- [MCP tools](mcp-tools.md) — 17 个工具的 JSON-RPC 契约
+- [Architecture](architecture.md) — 17 模块架构
+- [Release notes](changelog.md) — 0.1.0-M1 发布说明
+- [`examples/petclinic-mini/`](https://github.com/sulaymanyf/jrdi/tree/master/examples/petclinic-mini) — 端到端示例
