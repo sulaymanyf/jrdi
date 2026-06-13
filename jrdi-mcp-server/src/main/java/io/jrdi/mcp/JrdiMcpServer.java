@@ -643,7 +643,7 @@ public final class JrdiMcpServer {
         });
         server.setExecutor(Executors.newFixedThreadPool(4));
         server.start();
-        LOG.info("jrdi mcp http server listening on http://localhost:{}/mcp", port);
+        LOG.info("jrdi mcp http server listening on http://0.0.0.0:{}/mcp", port);
     }
 
     public static void main(String[] args) throws IOException {

@@ -26,6 +26,11 @@ jrdi extracts the dependency graph (classes, methods, fields, calls, Spring/Dubb
 
 📖 Full documentation: **<https://sulaymanyf.github.io/jrdi/>**
 
+**三种跑法 / Three ways to run:**
+- 🐳 **Docker** — `docker run ghcr.io/sulaymanyf/jrdi:0.1.0-M1 mcp` (零 JDK 依赖)
+- ☕ **fat-jar** — `java -jar jrdi-cli-0.1.0-M1.jar` (~29 MB, 直接用)
+- 🔧 **源码** — `mvn clean install -DskipTests` (贡献者用)
+
 ## 它能做什么 / What it does
 
 | 问题 / Question | 工具 / Tool |
@@ -36,6 +41,17 @@ jrdi extracts the dependency graph (classes, methods, fields, calls, Spring/Dubb
 | "Dubbo 调用链长什么样? 哪些远程, 哪些本地? 哪个方法配了超时/重试?" | `find_dubbo_services`, `find_dubbo_references`, `find_dubbo_method_configs` |
 | "这个 MyBatis mapper 跑哪些 SQL? 有没有 N+1 风险? 返回的 shape 长什么样?" | `find_mybatis_statements`, `find_mybatis_result_maps` |
 | "整个项目有多少类?多少方法?哪些类没人引用?" | `index_status`, `list_issues` |
+
+## What it does
+
+| Question | Tool |
+|---|---|
+| "How does this controller reach the service layer?" | `callers_of`, `find_path` |
+| "Who breaks if I change this DAO method?" | `callers_of` |
+| "What beans does Spring see? Who injects whom?" | `find_spring_beans`, `find_spring_injects` |
+| "What's the Dubbo call graph? Which methods are tuned (timeout/retries)?" | `find_dubbo_services`, `find_dubbo_references`, `find_dubbo_method_configs` |
+| "What SQL does this MyBatis mapper run? N+1 risk? Row-mapper shape?" | `find_mybatis_statements`, `find_mybatis_result_maps` |
+| "How many classes? Who is dead code?" | `index_status`, `list_issues` |
 
 ## 它不能做什么 / What it does NOT do
 

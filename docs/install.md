@@ -48,6 +48,80 @@ uncertain reflections: 0
 missing source: 0
 ```
 
+## Run as a container
+
+Pre-built images live on GitHub Container Registry. The image is **~270 MB** (Alpine + JRE 21 + both fat-jars + tini for graceful shutdown).
+
+### Quick start
+
+```sh
+# Self-diagnostics (no data needed, runs in <2s)
+docker run --rm ghcr.io/sulaymanyf/jrdi:0.1.0-M1 doctor
+
+# Index a local jar — bind-mount the jar AND the data dir
+docker run --rm \
+    -v /path/to/jar:/data/source:ro \
+    -v $PWD/.jrdi:/data/.jrdi \
+    ghcr.io/sulaymanyf/jrdi:0.1.0-M1 index /data/source/my-app-1.0.0.jar
+
+# MCP over stdio (for Claude Desktop / Cursor / OpenCode)
+docker run --rm -i -v $PWD/.jrdi:/data/.jrdi ghcr.io/sulaymanyf/jrdi:0.1.0-M1 mcp
+
+# MCP over HTTP/SSE
+docker run --rm -p 7890:7890 -v $PWD/.jrdi:/data/.jrdi \
+    ghcr.io/sulaymanyf/jrdi:0.1.0-M1 mcp-http 7890
+```
+
+The `mcp` and `mcp-http` shortcuts are thin wrappers around `jrdi-cli serve --stdio` / `serve --http <port>`. The data directory `/data/.jrdi` holds the SQLite DB, the Lucene index, and the M2 cache — bind-mount it for persistence.
+
+### Available tags
+
+| Tag | When it's pushed | Use it for |
+|---|---|---|
+| `0.1.0-M1` | every release tag | pinning a known version (production) |
+| `0.1` | every release tag | floating major.minor |
+| `latest` | only on stable (non-prerelease) tags | always the newest stable release |
+| `edge` | every push to `master` | trying unreleased changes |
+
+### Pin the image by digest (production)
+
+```sh
+DIGEST="sha256:..."   # grab from `docker pull --quiet` output
+docker run --rm "${DIGEST}" doctor
+```
+
+### MCP client config
+
+For **Claude Desktop** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "jrdi": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/absolute/path/to/.jrdi:/data/.jrdi",
+        "ghcr.io/sulaymanyf/jrdi:0.1.0-M1", "mcp"
+      ]
+    }
+  }
+}
+```
+
+For **Cursor** / **Cline** / **OpenCode** the same shape works — see [MCP clients](mcp-clients.md) for the file paths per client.
+
+### Build the image locally
+
+```sh
+git clone https://github.com/sulaymanyf/jrdi.git
+cd jrdi
+docker build -t jrdi:dev .
+docker run --rm jrdi:dev doctor
+```
+
+The build is multi-stage (Maven 3.9 + Temurin 21 on the way in, JRE 21 + Alpine on the way out) and uses BuildKit cache so a rebuild with no source changes finishes in <10s.
+
 ## Build from source
 
 If you want the latest unreleased changes, or you're hacking on jrdi itself:
@@ -62,10 +136,18 @@ This produces the same two jars under `jrdi-cli/target/` and `jrdi-mcp-server/ta
 
 ## System requirements
 
+For the **CLI / fat-jar** path:
+
 - **Java 21+** (we use records, pattern matching, `Thread.ofVirtual()`). Test on Temurin / Liberica / Microsoft builds.
 - **~150 MB heap** for medium projects (1000–5000 classes). Default 4 GB is generous; trim with `JAVA_OPTS=-Xmx2g` for tiny projects.
 - **Maven 3.9+** only required for *building*, not running.
-- **No** native libs, **no** system Python, **no** Docker (for the CLI). The Testcontainers-based Postgres IT is opt-in.
+- **No** native libs, **no** system Python. The Testcontainers-based Postgres IT is opt-in.
+
+For the **container** path:
+
+- **Docker 20.10+** (any runtime that understands multi-stage builds; tested on Docker Desktop 4.x and OrbStack).
+- **~270 MB disk** for the pulled image.
+- **Bind-mount** at least the data dir (`/data/.jrdi`) to keep the index across container restarts.
 
 ## What's next?
 

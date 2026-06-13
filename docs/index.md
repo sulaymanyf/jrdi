@@ -7,6 +7,11 @@ jrdi extracts the dependency graph (classes, methods, fields, calls, Spring/Dubb
 !!! tip "One-line mental model"
     jrdi is `static-analysis` + `MCP` + `LLM-readable facts`. It runs at build time, not runtime. It tells you what your code *looks like* — not what it *does* at the moment a request hits it.
 
+!!! tip "Three ways to run"
+    - **Docker** — `docker run ghcr.io/sulaymanyf/jrdi:0.1.0-M1 mcp` (zero JDK)
+    - **Fat-jar** — `java -jar jrdi-cli-0.1.0-M1.jar` (~29 MB, no build needed)
+    - **From source** — `mvn clean install -DskipTests` (for jrdi contributors)
+
 ## What it answers
 
 | Question | Tool(s) |

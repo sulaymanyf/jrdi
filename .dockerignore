@@ -1,0 +1,53 @@
+# Files excluded from the Docker build context. The buildkit cache
+# layer reads these and only sends the rest to the daemon, which makes
+# `docker build .` fast even with a large .git/ or target/ tree.
+#
+# Ref: https://docs.docker.com/build/cache/optimize/#dockerignore
+
+# Maven build outputs
+target/
+**/target/
+.m2/
+
+# Local caches
+.jrdi/
+*.db
+*.db-wal
+*.db-shm
+*.log
+logs/
+
+# IDE / editor
+.idea/
+.vscode/
+.project
+.settings/
+.classpath
+.factorypath
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs build output (we only ship source .md into the image)
+site/
+dist/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# CI files — not needed in the image
+.gitlab-ci.yml
+.circleci/
+
+# Tests that aren't part of the runtime
+**/src/test/
+**/src/test/java/
+
+# Test resources that depend on local dev paths
+**/src/test/resources/

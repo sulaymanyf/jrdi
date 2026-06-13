@@ -6,7 +6,25 @@ This document lists jrdi MCP configuration for all major LLM coding tools.
 
 ## TL;DR
 
-jrdi 通过 **stdio** 提供 MCP 服务,所有工具都用同一种配置格式:
+jrdi 通过 **stdio** 提供 MCP 服务,所有工具都用同一种配置格式。
+
+!!! tip "用 Docker 镜像(零 JDK 依赖)"
+    如果你不想/不能装 JDK 21,把 `command` 改成 `docker` 就行:
+
+    ```json
+    {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/absolute/path/to/.jrdi:/data/.jrdi",
+        "ghcr.io/sulaymanyf/jrdi:0.1.0-M1", "mcp"
+      ]
+    }
+    ```
+
+    下文每个客户端的示例都给出 `java -jar` 和 `docker run` 两个版本,任选其一。
+
+**java -jar 形式**:
 
 ```json
 {
@@ -19,7 +37,22 @@ jrdi 通过 **stdio** 提供 MCP 服务,所有工具都用同一种配置格式:
 }
 ```
 
+**docker 形式** (推荐给 LLM 客户端用):
+
+```json
+{
+  "command": "docker",
+  "args": [
+    "run", "--rm", "-i",
+    "-v", "/absolute/path/to/.jrdi:/data/.jrdi",
+    "ghcr.io/sulaymanyf/jrdi:0.1.0-M1", "mcp"
+  ]
+}
+```
+
 ## 前置条件 / Prerequisites
+
+**For `java -jar` 形式:**
 
 1. **JDK 21+** 已安装 (`java -version` ≥ 21)
 2. **jrdi 已 build**: `mvn clean install -DskipTests`
@@ -31,6 +64,20 @@ jrdi 通过 **stdio** 提供 MCP 服务,所有工具都用同一种配置格式:
        /path/to/your-app-1.0.0.jar
    ```
 4. **路径用绝对路径** — LLM 客户端的 CWD 通常跟项目根目录不一致
+
+**For `docker` 形式:**
+
+1. **Docker 20.10+** 已安装并运行
+2. 首次运行需要 `docker pull ghcr.io/sulaymanyf/jrdi:0.1.0-M1`(~270 MB),或交给 `docker run` 自动拉
+3. 创建一个数据目录并索引一次:
+   ```sh
+   $ mkdir -p .jrdi
+   $ docker run --rm \
+       -v $PWD:/data/src:ro \
+       -v $PWD/.jrdi:/data/.jrdi \
+       ghcr.io/sulaymanyf/jrdi:0.1.0-M1 \
+       index /data/src/your-app-1.0.0.jar
+   ```
 
 ## 1. Claude Code (Anthropic)
 

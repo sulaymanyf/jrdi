@@ -1,0 +1,124 @@
+name: docker
+
+# Build and push the jrdi container image to GitHub Container Registry
+# (ghcr.io/sulaymanyf/jrdi).
+#
+# Trigger policy:
+#   - push on master:  build + push `edge` tag (latest of master)
+#   - push of tag v*: build + push the released version + `latest`
+#   - pull_request:    build only (no push) — fail fast on Docker
+#                      syntax / dependency errors before merge
+#   - workflow_dispatch: manual build, with optional tag input
+#
+# Tags emitted (from a `git tag push 0.1.0-M1`):
+#   ghcr.io/sulaymanyf/jrdi:0.1.0-M1   (the literal tag)
+#   ghcr.io/sulaymanyf/jrdi:0.1        (major.minor, semver-ish)
+#   ghcr.io/sulaymanyf/jrdi:latest    (only for the highest tag of
+#                                       the default branch; never for
+#                                       pre-release tags)
+#
+# Multi-arch: amd64 only in this iteration. arm64 (Apple Silicon /
+# Graviton) is on the roadmap — we can add a `platforms:` buildx
+# matrix when there's a concrete ask for it.
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['*']
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Override the image tag (e.g. "dev", "0.1.0-M1")'
+        required: false
+        default: ''
+
+# Same Node 24 opt-in as ci.yml and docs.yml — see those for context.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: build + push
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Resolve metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Only `latest` on the highest semver tag of the default
+          # branch; pre-release tags (e.g. -M1) don't get `latest`.
+          flavor: |
+            latest=auto
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ inputs.tag }},enable={{is_default_branch}}
+            type=raw,value=${{ inputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version for the JAR's JRDI_VERSION env
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            # Branch or PR — use the short SHA.
+            echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build (and push, if not a PR)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            JRDI_VERSION=${{ steps.ver.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image size + manifest summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## Pushed images" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            echo "- \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Smoke test the pushed image
+        if: github.event_name != 'pull_request'
+        # `doctor` exits 0 on a healthy DB; the offline schema check
+        # runs in <3s and exercises Flyway, SQLite, and the JRE.
+        run: |
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          docker run --rm "${IMAGE}" doctor
