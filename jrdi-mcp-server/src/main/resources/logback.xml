@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--
+        jrdi-mcp-server logback config. All log output goes to STDERR so
+        the stdio transport's STDOUT is reserved for the JSON-RPC stream
+        (Claude Desktop / Cursor connect to MCP servers over stdio and
+        the protocol spec requires stdout to be message-only).
+    -->
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%date{HH:mm:ss.SSS} [%thread] %-5level %logger{0} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="io.jrdi" level="INFO"/>
+    <logger name="org.flywaydb" level="WARN"/>
+
+    <root level="WARN">
+        <appender-ref ref="STDERR"/>
+    </root>
+</configuration>

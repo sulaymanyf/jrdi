@@ -53,18 +53,49 @@ Apache Maven 3.9.15
 
 ---
 
-## 1. 构建 / Build
+## 1. 安装 / Install
+
+### 1.1 下载 fat-jar(推荐 / Recommended)
+
+每个 release 都附带两个 standalone jar(Java 21+,所有依赖打成一个文件):
+
+| 文件 / File | 大小 / Size | 用途 / Purpose |
+|---|---|---|
+| `jrdi-cli-0.1.0-M1.jar` | ~29 MB | CLI + 内嵌 MCP 服务器(`jrdi serve`) |
+| `jrdi-mcp-server-0.1.0-M1.jar` | ~29 MB | 独立 MCP 服务器(无 CLI,只跑 stdio/HTTP) |
+
+下载 + 校验:
 
 ```sh
-$ git clone <this-repo>
-$ cd java-mcp
+# macOS / Linux
+$ curl -L -o jrdi-cli.jar \
+    https://github.com/sulaymanyf/jrdi/releases/download/0.1.0-M1/jrdi-cli-0.1.0-M1.jar
+$ curl -L -o checksums.sha256 \
+    https://github.com/sulaymanyf/jrdi/releases/download/0.1.0-M1/jrdi-0.1.0-M1-checksums.sha256
+$ shasum -a 256 --check checksums.sha256
+$ java -jar jrdi-cli.jar --version
+```
+
+或者下载打包好的 zip / tarball(包含两个 jar + checksums + README):
+
+```sh
+$ curl -L -O https://github.com/sulaymanyf/jrdi/releases/download/0.1.0-M1/jrdi-0.1.0-M1-bin.zip
+$ unzip jrdi-0.1.0-M1-bin.zip
+$ java -jar jrdi-cli-0.1.0-M1.jar --help
+```
+
+### 1.2 从源码构建 / Build from source
+
+```sh
+$ git clone https://github.com/sulaymanyf/jrdi.git
+$ cd jrdi
 $ JAVA_HOME=/path/to/jdk-21 mvn clean install -DskipTests
 ```
 
-会生成两个 fat-jar (所有依赖打成一个文件):
+会生成两个 fat-jar:
 
-- `jrdi-cli/target/jrdi-cli-0.1.0-M1.jar` — 命令行工具(索引 / 查询 / 提供 MCP 服务)
-- `jrdi-mcp-server/target/jrdi-mcp-server-0.1.0-M1.jar` — 纯 MCP 服务器(可选,CLI 也能提供)
+- `jrdi-cli/target/jrdi-cli-0.1.0-M1.jar`
+- `jrdi-mcp-server/target/jrdi-mcp-server-0.1.0-M1.jar`
 
 ## 2. 索引你的项目 / Index your project
 

@@ -39,3 +39,6 @@ dump*.txt
 examples/**/jrdi.db
 examples/**/jrdi.db-wal
 examples/**/jrdi.db-shm
+
+# Release artifacts (built locally by scripts/package.sh; uploaded to GitHub Releases)
+dist/
