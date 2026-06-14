@@ -37,7 +37,8 @@ import java.util.List;
                 JrdiCommand.QueryCmd.class,
                 JrdiCommand.RebuildCmd.class,
                 JrdiCommand.DoctorCmd.class,
-                JrdiCommand.StatsCmd.class
+                JrdiCommand.StatsCmd.class,
+                JrdiCommand.M2WarmCmd.class
         }
 )
 public final class JrdiCommand implements Runnable {
