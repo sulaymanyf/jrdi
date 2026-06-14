@@ -40,22 +40,35 @@ public final class SqliteClassRepo implements ClassRepo {
 
     @Override
     public long upsert(Fqn fqn, int access, Fqn superFqn, Long fileId, String signatureRaw, String source) {
-        return upsert(fqn, access, superFqn, fileId, signatureRaw, source, List.of());
+        return upsertWithSourceJar(fqn, access, superFqn, fileId, signatureRaw, source, "");
     }
 
     @Override
     public long upsert(Fqn fqn, int access, Fqn superFqn, Long fileId, String signatureRaw, String source,
                        List<Fqn> interfaces) {
+        return upsertWithSourceJar(fqn, access, superFqn, fileId, signatureRaw, source, "", interfaces);
+    }
+
+    @Override
+    public long upsertWithSourceJar(Fqn fqn, int access, Fqn superFqn, Long fileId,
+                                    String signatureRaw, String source, String sourceJar) {
+        return upsertWithSourceJar(fqn, access, superFqn, fileId, signatureRaw, source, sourceJar, List.of());
+    }
+
+    private long upsertWithSourceJar(Fqn fqn, int access, Fqn superFqn, Long fileId,
+                                    String signatureRaw, String source, String sourceJar,
+                                    List<Fqn> interfaces) {
         String sql = """
-                INSERT INTO classes(fqn, access, super_fqn, file_id, signature_raw, source, interfaces)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO classes(fqn, access, super_fqn, file_id, signature_raw, source, interfaces, source_jar)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(fqn) DO UPDATE SET
                     access=excluded.access,
                     super_fqn=excluded.super_fqn,
                     file_id=COALESCE(excluded.file_id, classes.file_id),
                     signature_raw=COALESCE(excluded.signature_raw, classes.signature_raw),
                     source=excluded.source,
-                    interfaces=excluded.interfaces
+                    interfaces=excluded.interfaces,
+                    source_jar=excluded.source_jar
                 """;
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -69,6 +82,7 @@ public final class SqliteClassRepo implements ClassRepo {
             else ps.setString(5, signatureRaw);
             ps.setString(6, source == null ? "jar" : source);
             ps.setString(7, encodeInterfaces(interfaces));
+            ps.setString(8, sourceJar == null ? "" : sourceJar);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (rs.next()) return rs.getLong(1);
@@ -82,7 +96,7 @@ public final class SqliteClassRepo implements ClassRepo {
     @Override
     public Optional<Record> findByFqn(Fqn fqn) {
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "SELECT id, fqn, access, super_fqn, file_id, signature_raw, source, interfaces "
+                "SELECT id, fqn, access, super_fqn, file_id, signature_raw, source, interfaces, source_jar "
                         + "FROM classes WHERE fqn=?")) {
             ps.setString(1, fqn.slashed());
             try (ResultSet rs = ps.executeQuery()) {
@@ -151,8 +165,10 @@ public final class SqliteClassRepo implements ClassRepo {
         long fileIdRaw = rs.getLong("file_id");
         Long fileId = rs.wasNull() ? null : fileIdRaw;
         List<Fqn> interfaces = decodeInterfaces(rs.getString("interfaces"));
+        String sourceJar = rs.getString("source_jar");
         return new Record(id, fqn, access, superFqn, fileId, rs.getString("signature_raw"),
-                rs.getString("source"), interfaces);
+                rs.getString("source"), interfaces,
+                sourceJar == null ? "" : sourceJar);
     }
 
     /** Encode {@code [com/foo/I, com/bar/J]} → {@code ",com/foo/I,com/bar/J,"} (comma-bracketed). */

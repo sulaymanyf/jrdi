@@ -37,6 +37,7 @@ import picocli.CommandLine;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.ArrayList;
@@ -106,6 +107,85 @@ public final class CliWiring {
                 System.out.println("mybatis statements:    " + report.mybatisStatementsRecorded());
             }
             return 0;
+        }
+    }
+
+    /**
+     * {@code jrdi init <project-dir> --depth N --m2-root <path>}.
+     *
+     * <p>Index the project's own bytecode (via {@code mvn package}
+     * output or {@code target/classes}) and pre-extract every
+     * direct (and optionally transitive) Maven dependency. The
+     * deps land in the main {@code classes} / {@code methods} /
+     * {@code invokes} tables with {@code source_jar} populated,
+     * so LLM queries traverse cross-jar edges naturally.
+     */
+    public static int runInit(String dbUrl, Path projectDir, int depth, String m2RootOverride) {
+        if (!Files.isDirectory(projectDir)) {
+            System.err.println("ERROR: project dir not found: " + projectDir);
+            return 2;
+        }
+        Path pom = projectDir.resolve("pom.xml");
+        if (!Files.isRegularFile(pom)) {
+            System.err.println("ERROR: no pom.xml in " + projectDir);
+            return 2;
+        }
+        Path m2Root = m2RootOverride == null
+                ? Path.of(System.getProperty("user.home"), ".m2", "repository")
+                : Path.of(m2RootOverride);
+        List<Path> m2Roots = Files.isDirectory(m2Root) ? List.of(m2Root) : List.of();
+        if (m2Roots.isEmpty()) {
+            System.err.println("WARNING: m2 root not found at " + m2Root
+                    + " — only the project's own classes will be indexed");
+        }
+
+        io.jrdi.storage.Db db;
+        try {
+            db = io.jrdi.storage.Db.open(JrdiCommand.normalizeDbUrl(dbUrl));
+            io.jrdi.storage.Migrator.migrate(db.dataSource());
+        } catch (Exception e) {
+            System.err.println("ERROR: failed to open db: " + e.getMessage());
+            return 2;
+        }
+        try (db) {
+            List<io.jrdi.resolver.MavenPomParser.Dependency> deps;
+            try {
+                if (depth <= 0) {
+                    deps = List.of();
+                } else {
+                    deps = io.jrdi.resolver.MavenPomParser
+                            .resolveGraph(pom, depth, m2Roots);
+                }
+            } catch (IOException e) {
+                System.err.println("ERROR: failed to parse pom: " + e.getMessage());
+                return 2;
+            }
+            System.out.println("init: project " + projectDir.getFileName());
+            System.out.println("init: resolved " + deps.size() + " dep(s) at depth=" + depth);
+
+            io.jrdi.bytecode.M2LazyResolver resolver =
+                    new io.jrdi.bytecode.M2LazyResolver(db, m2Roots);
+            int indexed = 0, failed = 0;
+            for (var dep : deps) {
+                if ("test".equals(dep.scope())) {
+                    continue;
+                }
+                Gav gav = Gav.of(dep.groupId(), dep.artifactId(), dep.version());
+                long cacheId = resolver.extractGav(gav);
+                if (cacheId > 0) {
+                    indexed++;
+                } else {
+                    failed++;
+                }
+            }
+            System.out.println("init: indexed " + indexed + " dep(s) into the main tables");
+            if (failed > 0) {
+                System.out.println("init: " + failed + " dep(s) skipped (jar not found in m2 roots)");
+            }
+            return 0;
+        } catch (Exception e) {
+            System.err.println("ERROR: init failed: " + e.getMessage());
+            return 1;
         }
     }
 
@@ -606,7 +686,7 @@ public final class CliWiring {
         }
         try (db) {
             io.jrdi.bytecode.M2LazyResolver resolver = new io.jrdi.bytecode.M2LazyResolver(
-                    io.jrdi.storage.repo.sqlite.SqliteRepos.m2Repo(db), roots);
+                    db, roots);
             int n = resolver.warmAll();
             System.out.println("m2-warm: extracted facts from " + n + " jar(s)");
             return 0;

@@ -97,11 +97,23 @@ public final class JrdiMcpService {
         this(db, null);
     }
 
+    /**
+     * If the m2 resolver is configured and the given FQN isn't
+     * in the main classes table, try to extract it from a jar
+     * in the configured m2 roots. Idempotent.
+     */
+    private void ensureClassIndexed(String ownerDotted) {
+        if (m2 == null || ownerDotted == null || ownerDotted.isEmpty()) return;
+        Fqn fqn = Fqn.fromDotted(ownerDotted);
+        if (SqliteRepos.classRepo(db).findByFqn(fqn).isPresent()) return;
+        m2.resolveClassByFqn(fqn);
+    }
+
     public JrdiMcpService(Db db, List<Path> m2Roots) {
         this.db = db;
         this.m2 = (m2Roots == null || m2Roots.isEmpty())
                 ? null
-                : new M2LazyResolver(SqliteRepos.m2Repo(db), m2Roots);
+                : new M2LazyResolver(db, m2Roots);
         // Serialize Fqn as a string (toString = slashed form) so tool output
         // is round-trippable JSON.
         SimpleModule fqnModule = new SimpleModule();
@@ -195,11 +207,14 @@ public final class JrdiMcpService {
     }
 
     public ObjectNode toolCallersOf(JsonNode args) {
-        String owner = args.path("owner").asText();
-        String name = args.path("name").asText();
-        String desc = args.path("desc").asText();
+        String owner = args.path("owner").asText("");
+        String name = args.path("name").asText("");
+        String desc = args.path("desc").asText("");
         boolean includeReflect = args.path("includeReflect").asBoolean(false);
         var invokeRepo = SqliteRepos.invokeRepo(db);
+        // 0.3.0-M1 on-miss: try to lazily extract the callee
+        // class from a jar in the configured m2 roots.
+        ensureClassIndexed(owner);
         var edges = invokeRepo.findCallersOf(owner, name, desc);
         ObjectNode out = mapper.createObjectNode();
         var arr = mapper.createArrayNode();
@@ -231,6 +246,11 @@ public final class JrdiMcpService {
         String toDesc = args.path("toDesc").asText();
         int maxDepth = args.path("maxDepth").asInt(8);
         var methodRepo = SqliteRepos.methodRepo(db);
+        // 0.3.0-M1 on-miss: try to lazily extract the class from
+        // a jar in the configured m2 roots if either endpoint
+        // isn't yet in the main index.
+        ensureClassIndexed(fromOwner);
+        ensureClassIndexed(toOwner);
         var fromRef = methodRepo.findByKey(Fqn.fromDotted(fromOwner),
                 new MethodKey(fromName, fromDesc))
                 .map(r -> new MethodRef(Fqn.fromDotted(fromOwner), new MethodKey(fromName, fromDesc)))
@@ -643,7 +663,8 @@ public final class JrdiMcpService {
                         fileId,
                         rs.getString("signature_raw"),
                         rs.getString("source"),
-                        List.of()));
+                        List.of(),
+                        rs.getString("source_jar") == null ? "" : rs.getString("source_jar")));
             }
         } catch (Exception e) {
             LOG.debug("findAllClasses failed: {}", e.getMessage());

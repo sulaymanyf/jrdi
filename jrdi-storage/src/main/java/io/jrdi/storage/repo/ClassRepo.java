@@ -22,7 +22,7 @@ import java.util.Optional;
 public interface ClassRepo extends Repo {
 
     record Record(long id, Fqn fqn, int access, Fqn superFqn, Long fileId, String signatureRaw,
-                  String source, List<Fqn> interfaces) {}
+                  String source, List<Fqn> interfaces, String sourceJar) {}
 
     long upsert(Fqn fqn, int access, Fqn superFqn, Long fileId, String signatureRaw, String source);
 
@@ -34,6 +34,15 @@ public interface ClassRepo extends Repo {
      */
     long upsert(Fqn fqn, int access, Fqn superFqn, Long fileId, String signatureRaw, String source,
                 List<Fqn> interfaces);
+
+    /**
+     * 0.3.0-M1: upsert with {@code source_jar} populated. Used by the
+     * lazy m2 resolver to record provenance — classes from a
+     * dependency jar carry the absolute jar path so the LLM can
+     * distinguish them from the user's own project classes.
+     */
+    long upsertWithSourceJar(Fqn fqn, int access, Fqn superFqn, Long fileId,
+                             String signatureRaw, String source, String sourceJar);
 
     Optional<Record> findByFqn(Fqn fqn);
 

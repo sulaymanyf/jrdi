@@ -78,7 +78,7 @@ class M2LazyResolverTest {
                 }
                 """).classBytes();
         Path jar = buildJarWithName(tmp, "foo.jar", "com/acme/Foo.class", fooBytes);
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp));
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp));
 
         var hit = resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.Foo"));
         if (hit.isEmpty()) {
@@ -87,13 +87,14 @@ class M2LazyResolverTest {
             for (var c : repo.oldestCaches(10)) {
                 System.out.println("  cache: " + c.jarPath() + " classes=" + c.classesCount());
             }
-            for (var r : repo.findM2ClassesByFqn(Fqn.fromDotted("com.acme.Foo"))) {
-                System.out.println("  byFqn: " + r.jarPath() + " / " + r.fqn().slashed());
+            var r = SqliteRepos.classRepo(db).findByFqn(Fqn.fromDotted("com.acme.Foo"));
+            if (r.isPresent()) {
+                System.out.println("  byFqn: " + r.get().sourceJar() + " / " + r.get().fqn().slashed());
             }
         }
         assertThat(hit).isPresent();
         assertThat(hit.get().fqn().dotted()).isEqualTo("com.acme.Foo");
-        assertThat(hit.get().jarPath()).endsWith("foo.jar");
+        assertThat(hit.get().sourceJar()).endsWith("foo.jar");
 
         // m2_caches row should have counts.
         var cache = repo.findCache(jar.toAbsolutePath().toString());
@@ -111,7 +112,7 @@ class M2LazyResolverTest {
                 }
                 """).classBytes();
         Path jar = buildJarWithName(tmp, "bar.jar", "com/acme/Bar.class", barBytes);
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp));
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp));
 
         resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.Bar"));
         String extractedAtBefore = repo.findCache(jar.toAbsolutePath().toString())
@@ -131,7 +132,7 @@ class M2LazyResolverTest {
                 public class Foo {}
                 """).classBytes();
         buildJarWithName(tmp, "foo.jar", "com/acme/Foo.class", fooBytes);
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp));
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp));
 
         assertThat(resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.Missing")))
                 .isEmpty();
@@ -146,7 +147,7 @@ class M2LazyResolverTest {
                 }
                 """).classBytes();
         Path jar = buildJarWithName(tmp, "foo.jar", "com/acme/Foo.class", fooBytes);
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp));
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp));
 
         resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.Foo"));
         Files.setLastModifiedTime(jar, java.nio.file.attribute.FileTime.fromMillis(
@@ -169,7 +170,7 @@ class M2LazyResolverTest {
         Path jar1 = buildJarWithName(tmp, "a.jar", "com/acme/A.class", aBytes);
         Path jar2 = buildJarWithName(tmp, "b.jar", "com/acme/B.class", bBytes);
 
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp), new BytecodePass(), 1);
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp), new BytecodePass(), 1);
         resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.A"));
         Thread.sleep(50);
         resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.B"));
@@ -198,7 +199,7 @@ class M2LazyResolverTest {
                         """).classBytes());
         Files.writeString(tmp.resolve("README.md"), "irrelevant");
 
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp));
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp));
         int n = resolver.warmAll();
         assertThat(n).isEqualTo(3);
     }
@@ -227,17 +228,18 @@ class M2LazyResolverTest {
         Path jar = buildJarWithEntries(tmp, "acme.jar", Map.of(
                 "com/acme/Greeter.class", greeterBytes,
                 "com/acme/UseGreeter.class", useGreeterBytes));
-        M2LazyResolver resolver = new M2LazyResolver(repo, List.of(tmp));
+        M2LazyResolver resolver = new M2LazyResolver(db, List.of(tmp));
 
         resolver.resolveClassByFqn(Fqn.fromDotted("com.acme.UseGreeter"));
-        var out = repo.outgoingInvokes("com.acme.UseGreeter");
-        assertThat(out).isNotEmpty();
-        // The UseGreeter.<init> invokes Greeter.<init> (via `new
-        // com.acme.Greeter()`). We assert that the Greeter edge is
-        // present, regardless of method — the constructor chain is
-        // the most reliable signal that ASM picked up the cross-class
-        // reference.
-        assertThat(out).anyMatch(i -> i.calleeClassFqn().equals("com/acme/Greeter"));
+        // 0.3.0-M1: invokes are in the main `invokes` table.
+        // UseGreeter.<init> should have an edge to Greeter.<init>.
+        var methodRepo = SqliteRepos.methodRepo(db);
+        var ctor = methodRepo.findByKey(Fqn.fromDotted("com.acme.UseGreeter"),
+                new io.jrdi.core.symbol.MethodKey("<init>", "()V"));
+        assertThat(ctor).isPresent();
+        var edges = SqliteRepos.invokeRepo(db).findCalleesOf(ctor.get().id());
+        assertThat(edges).isNotEmpty();
+        assertThat(edges).anyMatch(e -> e.calleeOwner().equals("com/acme/Greeter"));
     }
 
     // ─── fixture helpers ────────────────────────────────────────────

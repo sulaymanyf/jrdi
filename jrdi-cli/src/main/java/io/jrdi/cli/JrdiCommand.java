@@ -29,9 +29,10 @@ import java.util.List;
 @Command(
         name = "jrdi",
         mixinStandardHelpOptions = true,
-        version = "jrdi 0.2.0-M1",
+        version = "jrdi 0.3.0-M1",
         description = "Java RPC Dependency Intelligence — LLM-queryable fact graph for JVM projects.",
         subcommands = {
+                JrdiCommand.InitCmd.class,
                 JrdiCommand.IndexCmd.class,
                 JrdiCommand.ServeCmd.class,
                 JrdiCommand.QueryCmd.class,
@@ -47,6 +48,34 @@ public final class JrdiCommand implements Runnable {
     public void run() {
         // No-arg invocation prints help
         CommandLine.usage(this, System.out);
+    }
+
+    @Command(name = "init", description = "Index the project at the given directory PLUS its direct " +
+            "Maven dependencies. Reads pom.xml to resolve the dependency graph, " +
+            "then ASM-extracts every direct dep's jar from ~/.m2 into the main " +
+            "classes/methods/invokes tables (so LLM queries can traverse the cross-jar " +
+            "edges naturally). After init, on-miss auto-indexing continues to " +
+            "backfill transitive deps as LLM queries demand them.")
+    public static class InitCmd implements Runnable {
+        @Parameters(arity = "1", description = "Path to the project root (the directory containing pom.xml)")
+        String projectDir;
+
+        @Option(names = {"--db"}, defaultValue = "sqlite:./jrdi.db", description = "JDBC URL")
+        String dbUrl;
+
+        @Option(names = {"--depth"}, defaultValue = "1",
+                description = "How many transitive dep hops to pre-extract (1 = direct deps only, " +
+                              "2 = + their direct deps, etc.). 0 = no deps, just the project.")
+        int depth;
+
+        @Option(names = {"--m2-root"}, description = "Override ~/.m2/repository (e.g. for CI with a custom cache)")
+        String m2Root;
+
+        @Override
+        public void run() {
+            int code = CliWiring.runInit(dbUrl, Path.of(projectDir), depth, m2Root);
+            if (code != 0) System.exit(code);
+        }
     }
 
     @Command(name = "index", description = "Index a local jar (or a GAV) into the jrdi DB")

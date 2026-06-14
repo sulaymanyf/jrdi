@@ -1,5 +1,111 @@
 # Release notes
 
+## 0.3.0-M1
+
+### `jrdi init` — index project + direct deps in one shot
+
+The headline 0.3.0 addition. Until now the workflow was:
+1. `mvn package -DskipTests`
+2. `jrdi index ./target/my-app-1.0.0.jar`
+3. (optional) `jrdi m2-warm ~/.m2/repository` to pre-warm m2 cache
+
+`jrdi init <project-dir>` replaces steps 1+2 and adds step 3
+in one command. It:
+
+- Reads your project's `pom.xml` (no `mvn` invocation required — direct DOM parse)
+- Resolves the dependency graph to a configurable depth (default = 1, just direct deps)
+- For each GAV, finds the jar in `~/.m2/repository` and ASM-extracts it into the main `classes` / `methods` / `invokes` tables
+- The dep class is recorded with `source_jar` set to the absolute jar path so the LLM can tell it apart from your own project classes
+
+```sh
+$ jrdi init ~/projects/my-app --depth 1 --db sqlite:./jrdi.db
+init: project my-app
+init: resolved 47 dep(s) at depth=1
+init: indexed 45 dep(s) into the main tables
+init: 2 dep(s) skipped (jar not found in m2 roots)
+$ jrdi doctor
+classes:        5,108      # was ~250 in 0.2.0
+methods:        32,401
+invokes:        78,229
+```
+
+### Cross-jar facts land in the main tables (0.3.0)
+
+**Breaking change** vs 0.2.0: lazy m2 extraction no longer
+writes to a separate `m2_*` schema. Everything goes into
+the same `classes` / `methods` / `invokes` tables, with a
+new `source_jar` column to mark provenance. This means:
+
+- LLM queries like `find_path`, `callers_of`, `find_dubbo_services` cross jar boundaries naturally — no UNION / no special-case code
+- The class hierarchy and interface implementation graph span the user's project + their full direct-dep closure
+- `m2_*` tables are kept as dormant schema for one release (0.4.0 will drop them)
+
+### On-miss auto-indexing at query time
+
+The MCP server now triggers lazy m2 extraction on query miss
+when the operator started it with `--m2-cache-dir`:
+
+- `find_dubbo_services(implClassId=0)` triggers extraction of
+  the impl jar from `~/.m2`
+- `callers_of(com/acme/Foo)` (which lives in a dep jar) triggers
+  extraction of the jar containing `Foo`
+- `find_path(from, to)` extracts both endpoints if either is
+  missing from the main index
+
+The behavior is opt-in: without `--m2-cache-dir`, queries fail
+fast as before. With it, the LLM gets cross-jar facts
+seamlessly.
+
+### Schema migrations (V10→V11)
+
+| V | Change | Purpose |
+|---|---|---|
+| V10 (0.2.0) | `m2_caches` + `m2_classes` + `m2_methods` + `m2_invokes` | Lazy m2 resolution (dormant in 0.3.0) |
+| **V11 (0.3.0)** | `classes.source_jar` + new index | Single-schema unification — cross-jar facts go in main tables |
+
+The `m2_caches` table is still useful — we use it for
+LRU eviction tracking, just no longer paired with the
+(now-defunct) `m2_classes` / `m2_methods` / `m2_invokes` tables.
+
+### Direct dependency resolution
+
+`MavenPomParser` reads `pom.xml` and returns the dependency
+graph without invoking `mvn`. Properties (`${spring.version}`)
+are resolved. `--depth N` controls transitive walk — `0` skips
+deps entirely, `1` (default) is direct deps only, `2+` walks
+the full transitive closure.
+
+Future work (0.4.0) will add Gradle support via
+`gradle dependencies` parsing.
+
+### Numbers
+
+- 17 modules at version `0.3.0-M1`
+- 32 test classes
+- **155 unit tests** (was 154 in 0.2.0; -13 from removed `m2_*` tests, +14 from new `M2LazyResolverTest` / `MavenPomParserTest` / `JrdiCommandE2EIT`)
+- 5 integration tests (1 pre-existing, the `CrossJarChaMcpIT` has been broken since 0.1.0; see Known issues)
+- Full reactor `mvn verify -DskipITs` finishes in ~15s
+- `jrdi init` for a 47-dep project: ~3-5 seconds (mostly ASM extraction)
+
+### Known issues (carried from 0.1.0-M1)
+
+- **`CrossJarChaMcpIT.find_path_walks_into_external_parent`** — this
+  integration test has been failing since 0.1.0-M1. The test
+  uses the legacy `M2ClasspathResolver` (0.1.0 cross-jar CHA,
+  not the 0.3.0 lazy resolver). It's marked as a known issue;
+  0.4.0 will rewrite the test to use the new resolver.
+- **No** Kotlin / Scala / Groovy support
+- **No** runtime profiling
+
+### Migration from 0.2.0-M1
+
+If you have an existing `jrdi.db` from 0.2.0-M1:
+
+- The V11 migration is automatic on next run — `Flyway applied 1 migration(s), schema at version 11`
+- The dormant `m2_classes` / `m2_methods` / `m2_invokes` rows are kept (they're not deleted; just no new writes)
+- The new `classes.source_jar` column defaults to `''` (empty = your project's own classes)
+- After upgrading, run `jrdi init <project>` to backfill your direct deps in the main tables
+
 ## 0.2.0-M1
 
 ### Lazy cross-jar m2 resolution (V10)

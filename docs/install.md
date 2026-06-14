@@ -52,59 +52,100 @@ missing source: 0
 
 Pre-built images live on GitHub Container Registry. The image is **~270 MB** (Alpine + JRE 21 + both fat-jars + tini for graceful shutdown).
 
-### Quick start
+### Quick start (0.3.0-M1)
 
 ```sh
-# Self-diagnostics (no data needed, runs in <2s)
-docker run --rm ghcr.io/sulaymanyf/jrdi:0.2.0-M1 doctor
+# 1. Self-diagnostics (no data needed, runs in <2s)
+docker run --rm ghcr.io/sulaymanyf/jrdi:0.3.0-M1 doctor
 
-# Index a local jar — bind-mount the jar AND the data dir
+# 2. Index the project + its direct deps (one shot, 0.3.0)
 docker run --rm \
-    -v /path/to/jar:/data/source:ro \
-    -v $PWD/.jrdi:/data/.jrdi \
-    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 index /data/source/my-app-1.0.0.jar
+    -v /path/to/your/project:/data/src:ro \
+    -v /path/to/your/project/.jrdi:/data/.jrdi \
+    -v $HOME/.m2:/root/.m2:ro \
+    ghcr.io/sulaymanyf/jrdi:0.3.0-M1 \
+    init /data/src --depth 1
 
-# MCP over stdio (for Claude Desktop / Cursor / OpenCode)
-docker run --rm -i -v $PWD/.jrdi:/data/.jrdi ghcr.io/sulaymanyf/jrdi:0.2.0-M1 mcp
-
-# MCP over HTTP/SSE
-docker run --rm -p 7890:7890 -v $PWD/.jrdi:/data/.jrdi \
-    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 mcp-http 7890
+# 3. Start the MCP server with on-miss auto-index
+docker run --rm -i \
+    -v /path/to/your/project/.jrdi:/data/.jrdi \
+    -v $HOME/.m2:/root/.m2:ro \
+    ghcr.io/sulaymanyf/jrdi:0.3.0-M1 mcp
 ```
 
-The `mcp` and `mcp-http` shortcuts are thin wrappers around `jrdi-cli serve --stdio` / `serve --http <port>`. The data directory `/data/.jrdi` holds the SQLite DB, the Lucene index, and the M2 cache — bind-mount it for persistence.
+The `init` step reads your project's `pom.xml`, finds every
+direct dependency, and ASM-extracts them from `~/.m2` into the
+main index — so LLM queries can traverse cross-jar edges
+without manual per-jar indexing. On-miss auto-indexing continues
+at query time for any class not already in the index.
 
-### Lazy cross-jar m2 resolution (0.2.0+)
+The data directory `/data/.jrdi` holds the SQLite DB, the
+Lucene index, and the m2 cache — bind-mount it for persistence.
 
-To enable cross-jar call-graph resolution into your `~/.m2`
-dependencies, pass `--m2-cache-dir` to `serve`. The first query
-that needs a cross-jar fact (e.g. `find_dubbo_services` for an
-interface whose impl is in an unindexed jar) triggers a one-time
-ASM extraction of that jar, cached to `m2_*` tables.
+### `jrdi init` — what it does
+
+`jrdi init <project-dir> [--depth N]` is the new (0.3.0)
+one-shot setup:
+
+- Reads `<project-dir>/pom.xml` (no `mvn` invocation)
+- Resolves the dep graph to `--depth N` (default = 1 = direct deps)
+- For each dep GAV, finds the jar in `~/.m2/repository` and
+  ASM-extracts the class facts into the main `classes` /
+  `methods` / `invokes` tables
+- Records `classes.source_jar` so the LLM knows which classes
+  came from your project vs a dep
 
 ```sh
-# CLI
-jrdi serve --m2-cache-dir ~/.m2/repository --stdio
+$ jrdi init ~/projects/my-app --depth 1 --db sqlite:./jrdi.db
+init: project my-app
+init: resolved 47 dep(s) at depth=1
+init: indexed 45 dep(s) into the main tables
+init: 2 dep(s) skipped (jar not found in m2 roots)
+```
 
-# Docker: bind-mount your .m2 + enable the flag
+For a Spring Boot 3 project with 47 direct deps, this takes
+~3-5 seconds. Without `init`, the LLM would discover each dep
+one-by-one via the on-miss hook — slower for a one-time setup,
+but lets you start with zero setup cost.
+
+### On-miss auto-indexing
+
+With `--m2-cache-dir` passed to `serve`, the MCP server will
+auto-extract any class that doesn't yet exist in the main
+index when a query needs it:
+
+```sh
+# Docker
 docker run --rm -i \
     -v $PWD/.jrdi:/data/.jrdi \
     -v $HOME/.m2:/root/.m2:ro \
-    -e MAVEN_OPTS="" \
-    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 \
-    mcp-warm ~/.m2/repository
-# (the mcp-warm shortcut is a future convenience; for now, use
-#  the entrypoint directly to pre-warm:)
-docker run --rm \
-    -v $PWD/.jrdi:/data/.jrdi \
-    -v $HOME/.m2:/root/.m2:ro \
-    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 \
-    m2-warm /root/.m2/repository
+    ghcr.io/sulaymanyf/jrdi:0.3.0-M1 mcp
 ```
 
-Pre-warming (the second form) is recommended after a clean
-install: the first call to `find_dubbo_services` will then
-return cross-jar facts instantly, no per-query ASM overhead.
+The LLM can ask `find_path(from=com.acme.MyService, to=org.springframework.web.servlet.DispatcherServlet)`
+and jrdi will:
+1. Look up `com.acme.MyService` — found in main index
+2. Look up `DispatcherServlet` — not in main index
+3. Trigger lazy m2 extraction of `spring-webmvc-X.Y.Z.jar`
+4. ASM-extract the class (and its invokes)
+5. Insert into the main tables with `source_jar` set
+6. Return the path
+
+Subsequent queries hit the warm cache.
+
+### Lazy cross-jar m2 resolution (still supported)
+
+The old 0.2.0 behavior — `m2-warm` to pre-warm the cache — still
+works, but it's not required for 0.3.0:
+
+```sh
+# Old way (still supported)
+jrdi m2-warm ~/.m2/repository
+
+# New way: just use init + serve
+jrdi init . --depth 2
+jrdi serve --m2-cache-dir ~/.m2/repository --stdio
+```
 
 ### Available tags
 
