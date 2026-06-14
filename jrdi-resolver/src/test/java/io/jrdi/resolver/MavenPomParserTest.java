@@ -194,4 +194,74 @@ class MavenPomParserTest {
                 MavenPomParser.resolveGraph(projectPom, 5, List.of(m2));
         assertThat(deps).hasSize(1);
     }
+
+    @Test
+    void directDependencies_resolves_unmanaged_version_from_parent_dependencyManagement(
+            @TempDir Path tmp) throws IOException {
+        // Simulates: project with no <dependencyManagement> of its own,
+        // inherits from a parent BOM. Parent pom lives in m2 layout.
+        Path m2 = tmp.resolve("m2");
+        Path parentDir = m2.resolve("org/springframework/boot/spring-boot-dependencies/3.2.0");
+        Files.createDirectories(parentDir);
+        Path parentPom = parentDir.resolve("spring-boot-dependencies-3.2.0.pom");
+        Files.writeString(parentPom, """
+                <?xml version="1.0"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-dependencies</artifactId>
+                  <version>3.2.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.projectlombok</groupId>
+                        <artifactId>lombok</artifactId>
+                        <version>1.18.30</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>junit</groupId>
+                        <artifactId>junit</artifactId>
+                        <version>4.13.2</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Path projectPom = tmp.resolve("pom.xml");
+        Files.writeString(projectPom, """
+                <?xml version="1.0"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>rds-pg</artifactId>
+                  <version>1.0.0</version>
+                  <parent>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-dependencies</artifactId>
+                    <version>3.2.0</version>
+                  </parent>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.projectlombok</groupId>
+                      <artifactId>lombok</artifactId>
+                      <scope>provided</scope>
+                    </dependency>
+                    <dependency>
+                      <groupId>junit</groupId>
+                      <artifactId>junit</artifactId>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        List<MavenPomParser.Dependency> deps =
+                MavenPomParser.directDependencies(projectPom, List.of(m2));
+        assertThat(deps).hasSize(2);
+        var lombok = deps.stream().filter(d -> d.artifactId().equals("lombok")).findFirst().orElseThrow();
+        assertThat(lombok.version()).isEqualTo("1.18.30");
+        assertThat(lombok.scope()).isEqualTo("provided");
+        var junit = deps.stream().filter(d -> d.artifactId().equals("junit")).findFirst().orElseThrow();
+        assertThat(junit.version()).isEqualTo("4.13.2");
+        assertThat(junit.scope()).isEqualTo("test");
+    }
 }

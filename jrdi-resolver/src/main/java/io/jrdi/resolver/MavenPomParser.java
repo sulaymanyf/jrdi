@@ -60,16 +60,32 @@ public final class MavenPomParser {
 
     /**
      * Read the {@code <dependencies>} block of a pom and return
-     * the direct deps, in declaration order. Properties in the
-     * version field are NOT resolved — that's deferred to
-     * {@link #resolveVersionProperty} so we can do it without
-     * re-walking the whole tree.
+     * the direct deps, in declaration order. Versions are
+     * resolved against the pom's own {@code <properties>} block
+     * AND against the {@code <dependencyManagement>} block of the
+     * pom (and recursively, of the parent pom from {@code m2Roots}).
+     * Properties in the version field are NOT resolved — that's
+     * deferred to {@link #resolveVersionProperty} so we can do it
+     * without re-walking the whole tree.
      */
     public static List<Dependency> directDependencies(Path pomFile) throws IOException {
+        return directDependencies(pomFile, List.of());
+    }
+
+    /**
+     * Same as {@link #directDependencies(Path)}, but accepts a
+     * hint list of m2 roots for resolving inherited
+     * {@code <dependencyManagement>} from parent poms. Pass
+     * {@code List.of()} if you don't care about parent BOMs.
+     */
+    public static List<Dependency> directDependencies(Path pomFile,
+                                                       List<Path> m2Roots) throws IOException {
         Document doc = parse(pomFile);
         Element root = doc.getDocumentElement();
         // The pom's <properties> block — for ${...} resolution.
         var properties = collectProperties(root);
+        // Flattened dependencyManagement: groupId:artifactId -> version
+        var mgmt = collectDependencyManagement(root, pomFile, m2Roots);
         List<Dependency> out = new ArrayList<>();
         // <project><dependencies>
         for (Element deps : childrenByLocalName(root, "dependencies")) {
@@ -78,12 +94,70 @@ public final class MavenPomParser {
                 String a = childText(dep, "artifactId");
                 if (g == null || a == null) continue;
                 String v = resolveVersionProperty(childText(dep, "version"), properties);
+                if (v == null) {
+                    v = mgmt.get(g + ":" + a);
+                }
                 String scope = childText(dep, "scope");
                 if (scope == null) scope = "compile";
                 String type = childText(dep, "type");
                 if (type == null) type = "jar";
                 boolean optional = "true".equalsIgnoreCase(childText(dep, "optional"));
                 out.add(new Dependency(g, a, v, scope, optional, type));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Walk this pom's {@code <dependencyManagement>} and (recursively)
+     * the parent pom's {@code <dependencyManagement>} until the chain
+     * ends. Parent resolution requires {@code m2Roots} to be non-empty.
+     * Returns a map of {@code groupId:artifactId} → resolved version.
+     */
+    private static java.util.Map<String, String> collectDependencyManagement(
+            Element root, Path selfPom, List<Path> m2Roots) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        for (Element dm : childrenByLocalName(root, "dependencyManagement")) {
+            for (Element deps : childrenByLocalName(dm, "dependencies")) {
+                for (Element dep : childrenByLocalName(deps, "dependency")) {
+                    String g = childText(dep, "groupId");
+                    String a = childText(dep, "artifactId");
+                    String v = childText(dep, "version");
+                    if (g != null && a != null && v != null && !v.startsWith("${")) {
+                        out.putIfAbsent(g + ":" + a, v);
+                    }
+                }
+            }
+        }
+        // Walk parent pom. Maven layout:
+        //   <groupId> (often in <parent><groupId>) +
+        //   <parent><artifactId> +
+        //   <parent><version> → m2Roots/<groupPath>/<artifactId>/<version>/<artifactId>-<version>.pom
+        if (!m2Roots.isEmpty()) {
+            for (Element parent : childrenByLocalName(root, "parent")) {
+                String pg = childText(parent, "groupId");
+                String pa = childText(parent, "artifactId");
+                String pv = childText(parent, "version");
+                if (pg == null || pa == null || pv == null) continue;
+                if (pv.startsWith("${")) continue;
+                String rel = pg.replace('.', '/') + "/" + pa + "/" + pv + "/"
+                        + pa + "-" + pv + ".pom";
+                for (Path r : m2Roots) {
+                    Path p = r.resolve(rel);
+                    if (Files.isRegularFile(p)) {
+                        try {
+                            Document pdoc = parse(p);
+                            var pm = collectDependencyManagement(
+                                    pdoc.getDocumentElement(), p, m2Roots);
+                            // Parent entries lose to self.
+                            for (var e : pm.entrySet()) {
+                                out.putIfAbsent(e.getKey(), e.getValue());
+                            }
+                        } catch (IOException ignored) {}
+                        break;
+                    }
+                }
+                break;  // only one parent
             }
         }
         return out;
@@ -120,7 +194,7 @@ public final class MavenPomParser {
      */
     public static List<Dependency> resolveGraph(Path projectPom, int maxDepth,
                                                 List<Path> m2Roots) throws IOException {
-        List<Dependency> direct = directDependencies(projectPom);
+        List<Dependency> direct = directDependencies(projectPom, m2Roots);
         Set<String> seen = new HashSet<>();
         // Seed with the project's own GAV so transitive walks don't loop back.
         Gav selfGav = projectGav(projectPom);
@@ -154,7 +228,7 @@ public final class MavenPomParser {
         Path depPom = findDepPom(dep, m2Roots);
         if (depPom == null) return;
         try {
-            List<Dependency> next = directDependencies(depPom);
+            List<Dependency> next = directDependencies(depPom, m2Roots);
             for (Dependency n : next) {
                 String key = n.groupId() + ":" + n.artifactId() + ":" + n.version();
                 if (seen.add(key)) {
