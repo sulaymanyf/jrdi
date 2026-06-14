@@ -29,7 +29,7 @@ import java.util.List;
 @Command(
         name = "jrdi",
         mixinStandardHelpOptions = true,
-        version = "jrdi 0.1.0-M1",
+        version = "jrdi 0.2.0-M1",
         description = "Java RPC Dependency Intelligence — LLM-queryable fact graph for JVM projects.",
         subcommands = {
                 JrdiCommand.IndexCmd.class,

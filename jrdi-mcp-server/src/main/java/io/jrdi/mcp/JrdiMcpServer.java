@@ -233,7 +233,7 @@ public final class JrdiMcpServer {
         result.set("capabilities", caps);
         ObjectNode server = mapper.createObjectNode();
         server.put("name", "jrdi");
-        server.put("version", "0.1.0-M1");
+        server.put("version", "0.2.0-M1");
         result.set("serverInfo", server);
         return result;
     }
