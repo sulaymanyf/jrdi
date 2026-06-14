@@ -170,23 +170,36 @@ public final class CliWiring {
                 if ("test".equals(dep.scope())) {
                     continue;
                 }
-                Gav gav = Gav.of(dep.groupId(), dep.artifactId(), dep.version());
-                long cacheId = resolver.extractGav(gav);
-                if (cacheId > 0) {
-                    indexed++;
-                } else {
-                    failed++;
-                }
+            String version = dep.version();
+            if (version == null || version.isBlank() || version.startsWith("${")) {
+                System.err.println("WARN: skipping dep with unresolved version: "
+                        + dep.groupId() + ":" + dep.artifactId() + ":" + version);
+                failed++;
+                continue;
             }
-            System.out.println("init: indexed " + indexed + " dep(s) into the main tables");
-            if (failed > 0) {
-                System.out.println("init: " + failed + " dep(s) skipped (jar not found in m2 roots)");
+            Gav gav = Gav.of(dep.groupId(), dep.artifactId(), version);
+            long cacheId = resolver.extractGav(gav);
+            if (cacheId > 0) {
+                indexed++;
+            } else {
+                failed++;
             }
-            return 0;
-        } catch (Exception e) {
-            System.err.println("ERROR: init failed: " + e.getMessage());
-            return 1;
         }
+        System.out.println("init: indexed " + indexed + " dep(s) into the main tables");
+        if (failed > 0) {
+            System.out.println("init: " + failed + " dep(s) skipped (jar not found in m2 roots or unresolved version)");
+        }
+        return 0;
+    } catch (Exception e) {
+        String msg = e.getMessage();
+        if (msg == null || msg.isBlank()) {
+            System.err.println("ERROR: init failed: " + e.getClass().getName() + " (no message)");
+            e.printStackTrace(System.err);
+        } else {
+            System.err.println("ERROR: init failed: " + msg);
+        }
+        return 1;
+    }
     }
 
     public static int runQuery(String target, String dbUrl, String from, String to, int depth, boolean includeReflect) {
