@@ -1,5 +1,72 @@
 # Release notes
 
+## 0.2.0-M1
+
+### Lazy cross-jar m2 resolution (V10)
+
+The biggest 0.2.0 addition. When `find_dubbo_services` or `callers_of`
+hits a class that lives in a jar jrdi didn't index, the lazy
+`M2LazyResolver` opens that jar from a configured m2 root,
+extracts just the class facts (no framework pass, no source
+attribution), and writes them into four new tables:
+
+| Table | Purpose |
+|---|---|
+| `m2_caches`     | Per-jar mtime + SHA-256 + LRU `last_access_at` |
+| `m2_classes`    | Slashed FQN, super, interfaces, jar_path |
+| `m2_methods`    | name, JVM descriptor, optional line number |
+| `m2_invokes`    | caller→callee edges, including `call_kind` (invoke vs invoke_dynamic vs reflection) |
+
+**Why this matters:** 0.1.0-M1 stores `dubbo_services.impl_class_id = 0`
+as a sentinel for "implementation class not indexed" — the LLM
+could see that an interface had no impl, but couldn't follow the
+RPC across the jar boundary. 0.2.0-M1 fixes that: pass
+`--m2-cache-dir ~/.m2/repository` to `jrdi serve` and the resolver
+fills in the missing facts on the first query that needs them.
+
+**Cost discipline:** each cached jar is extracted at most once
+(SHA-256 + mtime invalidation), and an LRU policy evicts the
+oldest cache row past a 50-jar cap. The resolver is opt-in — if
+you don't pass `--m2-cache-dir`, behaviour is identical to
+0.1.0-M1 (the `implClassId = 0` sentinel still surfaces and
+queries return partial data).
+
+**New CLI surface:**
+
+```sh
+# Pre-warm offline (recommended after a clean install)
+jrdi m2-warm --db sqlite:./jrdi.db ~/.m2/repository
+
+# Enable lazy resolution at serve time
+jrdi serve --m2-cache-dir ~/.m2/repository --stdio
+```
+
+### Schema migrations (V10)
+
+| V | Change | Purpose |
+|---|---|---|
+| V10 | `m2_caches` + `m2_classes` + `m2_methods` + `m2_invokes` | Lazy m2 resolution tables (LRU-cached) |
+
+The V10 UNIQUE key on `m2_classes(fqn, jar_path)` allows the same
+class to live in multiple jars without collision; the cascade
+from `m2_caches` on delete ensures cache eviction doesn't leave
+orphaned method/invoke rows.
+
+### Numbers
+
+- 17 modules at version `0.2.0-M1`
+- 32+ test classes, **+7 new** for `M2LazyResolver`
+  (cache hit, cache miss, mtime invalidation, missing class, LRU
+  eviction, warm-all, cross-class invoke edges)
+- 167 tests, 0 failures, 0 errors, 1 skipped (PostgresE2EIT)
+- Full reactor `mvn verify` finishes in ~17s on a laptop
+
+### Known limitations (carried over from 0.1.0-M1)
+
+- **No** Kotlin / Scala / Groovy support
+- **No** runtime profiling (static analysis only)
+- **No** watch mode (still 0.2.x scope, not in this drop)
+
 ## 0.1.0-M1 — 2026-06-14
 
 First milestone release of **jrdi — Java RPC Dependency Intelligence MCP**.

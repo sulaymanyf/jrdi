@@ -56,23 +56,55 @@ Pre-built images live on GitHub Container Registry. The image is **~270 MB** (Al
 
 ```sh
 # Self-diagnostics (no data needed, runs in <2s)
-docker run --rm ghcr.io/sulaymanyf/jrdi:0.1.0-M1 doctor
+docker run --rm ghcr.io/sulaymanyf/jrdi:0.2.0-M1 doctor
 
 # Index a local jar — bind-mount the jar AND the data dir
 docker run --rm \
     -v /path/to/jar:/data/source:ro \
     -v $PWD/.jrdi:/data/.jrdi \
-    ghcr.io/sulaymanyf/jrdi:0.1.0-M1 index /data/source/my-app-1.0.0.jar
+    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 index /data/source/my-app-1.0.0.jar
 
 # MCP over stdio (for Claude Desktop / Cursor / OpenCode)
-docker run --rm -i -v $PWD/.jrdi:/data/.jrdi ghcr.io/sulaymanyf/jrdi:0.1.0-M1 mcp
+docker run --rm -i -v $PWD/.jrdi:/data/.jrdi ghcr.io/sulaymanyf/jrdi:0.2.0-M1 mcp
 
 # MCP over HTTP/SSE
 docker run --rm -p 7890:7890 -v $PWD/.jrdi:/data/.jrdi \
-    ghcr.io/sulaymanyf/jrdi:0.1.0-M1 mcp-http 7890
+    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 mcp-http 7890
 ```
 
 The `mcp` and `mcp-http` shortcuts are thin wrappers around `jrdi-cli serve --stdio` / `serve --http <port>`. The data directory `/data/.jrdi` holds the SQLite DB, the Lucene index, and the M2 cache — bind-mount it for persistence.
+
+### Lazy cross-jar m2 resolution (0.2.0+)
+
+To enable cross-jar call-graph resolution into your `~/.m2`
+dependencies, pass `--m2-cache-dir` to `serve`. The first query
+that needs a cross-jar fact (e.g. `find_dubbo_services` for an
+interface whose impl is in an unindexed jar) triggers a one-time
+ASM extraction of that jar, cached to `m2_*` tables.
+
+```sh
+# CLI
+jrdi serve --m2-cache-dir ~/.m2/repository --stdio
+
+# Docker: bind-mount your .m2 + enable the flag
+docker run --rm -i \
+    -v $PWD/.jrdi:/data/.jrdi \
+    -v $HOME/.m2:/root/.m2:ro \
+    -e MAVEN_OPTS="" \
+    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 \
+    mcp-warm ~/.m2/repository
+# (the mcp-warm shortcut is a future convenience; for now, use
+#  the entrypoint directly to pre-warm:)
+docker run --rm \
+    -v $PWD/.jrdi:/data/.jrdi \
+    -v $HOME/.m2:/root/.m2:ro \
+    ghcr.io/sulaymanyf/jrdi:0.2.0-M1 \
+    m2-warm /root/.m2/repository
+```
+
+Pre-warming (the second form) is recommended after a clean
+install: the first call to `find_dubbo_services` will then
+return cross-jar facts instantly, no per-query ASM overhead.
 
 ### Available tags
 

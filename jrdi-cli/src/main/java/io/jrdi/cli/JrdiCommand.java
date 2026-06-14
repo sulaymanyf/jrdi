@@ -20,6 +20,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Root command. Routes to the six sub-commands: {@code index}, {@code serve},
@@ -79,9 +80,31 @@ public final class JrdiCommand implements Runnable {
         @Option(names = {"--db"}, defaultValue = "sqlite:./jrdi.db", description = "JDBC URL")
         String dbUrl;
 
+        @Option(names = {"--m2-cache-dir"},
+                description = "Comma-separated paths to local m2 roots (or any directory tree with .jars). " +
+                              "Enables lazy cross-jar resolution at query time.")
+        String m2CacheDir;
+
         @Override
         public void run() {
-            int code = CliWiring.runServe(dbUrl, stdio ? null : httpPort);
+            int code = CliWiring.runServe(dbUrl, stdio ? null : httpPort, m2CacheDir);
+            if (code != 0) System.exit(code);
+        }
+    }
+
+    @Command(name = "m2-warm", description = "Pre-extract class facts from every jar under the given roots. " +
+            "Run this once after a clean install so the lazy resolver's first " +
+            "queries don't have to open and ASM every jar cold.")
+    public static class M2WarmCmd implements Runnable {
+        @Parameters(arity = "1..*", description = "One or more directories to walk for .jar files")
+        List<Path> roots;
+
+        @Option(names = {"--db"}, defaultValue = "sqlite:./jrdi.db", description = "JDBC URL")
+        String dbUrl;
+
+        @Override
+        public void run() {
+            int code = CliWiring.runM2Warm(dbUrl, roots);
             if (code != 0) System.exit(code);
         }
     }

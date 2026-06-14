@@ -108,4 +108,8 @@ public final class SqliteRepos {
     public static io.jrdi.storage.repo.DubboRegistryRepo dubboRegistryRepo(Db db) {
         return new SqliteDubboRegistryRepo(db.dataSource());
     }
+
+    public static io.jrdi.storage.repo.M2Repo m2Repo(Db db) {
+        return new SqliteM2Repo(db.dataSource());
+    }
 }

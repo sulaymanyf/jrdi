@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.jrdi</groupId>
         <artifactId>jrdi-parent</artifactId>
-        <version>0.1.0-M1</version>
+        <version>0.2.0-M1</version>
     </parent>
 
     <artifactId>jrdi-bytecode</artifactId>
@@ -47,6 +47,14 @@
         <dependency>
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm-tree</artifactId>
+        </dependency>
+
+        <!-- Used by M2LazyResolver to find impl-of-interface
+             across many jars. We only do this at query time, never
+             during indexing, so the heavyweight dep is OK. -->
+        <dependency>
+            <groupId>io.github.classgraph</groupId>
+            <artifactId>classgraph</artifactId>
         </dependency>
 
         <dependency>

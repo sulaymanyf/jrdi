@@ -39,6 +39,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayList;
 
 /**
  * CLI subcommand wiring: open a SQLite DB, run pipeline, print IndexReport.
@@ -477,10 +478,17 @@ public final class CliWiring {
         }
     }
 
-    public static int runServe(String dbUrl, Integer httpPort) {
+    public static int runServe(String dbUrl, Integer httpPort, String m2CacheDir) {
         io.jrdi.mcp.JrdiMcpService service;
         try {
-            service = io.jrdi.mcp.JrdiMcpService.openSqlite(JrdiCommand.normalizeDbUrl(dbUrl));
+            List<Path> m2Roots = parseM2Roots(m2CacheDir);
+            if (m2Roots != null && !m2Roots.isEmpty()) {
+                service = io.jrdi.mcp.JrdiMcpService.openSqliteWithM2(
+                        JrdiCommand.normalizeDbUrl(dbUrl), m2Roots);
+            } else {
+                service = io.jrdi.mcp.JrdiMcpService.openSqlite(
+                        JrdiCommand.normalizeDbUrl(dbUrl));
+            }
         } catch (Exception e) {
             System.err.println("ERROR: failed to open db: " + e.getMessage());
             return 2;
@@ -559,5 +567,52 @@ public final class CliWiring {
             return jar.getParent().resolve(fname.replace(".jar", "-sources.jar"));
         }
         return null;
+    }
+
+    // ─── m2 lazy resolution (0.2.0) ─────────────────────────────────
+
+    /**
+     * Parse a comma-separated list of m2 root paths. Returns null
+     * if {@code raw} is null or empty.
+     */
+    static List<Path> parseM2Roots(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        List<Path> out = new ArrayList<>();
+        for (String p : raw.split(",")) {
+            String trimmed = p.trim();
+            if (trimmed.isEmpty()) continue;
+            Path path = Path.of(trimmed);
+            if (!Files.isDirectory(path)) {
+                System.err.println("WARNING: m2 root is not a directory: " + path);
+                continue;
+            }
+            out.add(path);
+        }
+        return out;
+    }
+
+    /**
+     * Pre-warm the m2 caches: walk every jar under the given roots
+     * and extract its class facts. Useful after a clean install.
+     */
+    public static int runM2Warm(String dbUrl, List<Path> roots) {
+        io.jrdi.storage.Db db;
+        try {
+            db = io.jrdi.storage.Db.open(JrdiCommand.normalizeDbUrl(dbUrl));
+            io.jrdi.storage.Migrator.migrate(db.dataSource());
+        } catch (Exception e) {
+            System.err.println("ERROR: failed to open db: " + e.getMessage());
+            return 2;
+        }
+        try (db) {
+            io.jrdi.bytecode.M2LazyResolver resolver = new io.jrdi.bytecode.M2LazyResolver(
+                    io.jrdi.storage.repo.sqlite.SqliteRepos.m2Repo(db), roots);
+            int n = resolver.warmAll();
+            System.out.println("m2-warm: extracted facts from " + n + " jar(s)");
+            return 0;
+        } catch (Exception e) {
+            System.err.println("ERROR: m2-warm failed: " + e.getMessage());
+            return 1;
+        }
     }
 }

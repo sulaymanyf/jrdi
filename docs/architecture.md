@@ -345,6 +345,54 @@ The same column backs the new `consumerClass` argument of
 `find_dubbo_references` — the MCP tool can now answer "what does
 `com.acme.web.OrderController` inject from Dubbo?" with one query.
 
+### V10 — Lazy cross-jar m2 resolution (0.2.0-M1)
+
+V10 introduces four new tables and an opt-in resolver that fills
+them on demand. The resolver is **opt-in** — pass
+`--m2-cache-dir <root>` to `jrdi serve` and the query layer will
+auto-extract facts from jars under that root. Without the flag,
+behaviour is identical to 0.1.0-M1 (the `implClassId = 0`
+sentinel still surfaces).
+
+**Why opt-in:** extracting every m2 jar eagerly during indexing
+would be a 100× slowdown. Lazy resolution puts the cost on
+queries that actually need the cross-jar facts, not on every
+index run.
+
+**Why a separate `m2_*` schema:** the "official" tables
+(`classes`, `methods`, `invokes`) are populated at index time
+from the project under analysis. The m2 tables are populated on
+demand from second-class jars. Mixing them would make the
+"indexed project" graph noisy; the LLM can tell at a glance
+which facts are first-source vs derived.
+
+**LRU policy:** `m2_caches.last_access_at` is touched on every
+hit; past a 50-jar cap (configurable), the oldest cache row is
+evicted with CASCADE removing its `m2_classes` / `m2_methods` /
+`m2_invokes`. Per-jar mtime + SHA-256 are checked on every
+read; mismatches trigger a re-extract.
+
+**Schema shape:**
+
+```sql
+m2_caches    (id, jar_path, jar_sha256, jar_mtime_ms,
+              classes_count, methods_count, invokes_count,
+              extracted_at, last_access_at)
+m2_classes   (id, fqn, super_fqn, access, interfaces, jar_path)
+m2_methods   (id, class_id, name, desc, access, line)
+m2_invokes   (id, caller_class_fqn, caller_method_id,
+              callee_class_fqn, callee_method_name,
+              callee_method_desc, call_kind)
+```
+
+`m2_invokes.caller_method_id` is FK'd to `m2_methods` so deleting
+a class CASCADEs its methods and their invoke edges. The
+`call_kind` column captures `invoke` (the default ASM
+INVOKEVIRTUAL / INVOKESTATIC / INVOKEINTERFACE / INVOKESPECIAL)
+vs `invoke_dynamic` (lambdas, string concat, etc.) vs
+`reflection` (Method.invoke / Class.forName patterns ASM can
+detect).
+
 ### Dialect dispatch
 
 `Migrator.migrate()` inspects the JDBC URL and picks the migration directory:

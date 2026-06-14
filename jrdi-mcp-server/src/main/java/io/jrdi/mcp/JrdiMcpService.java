@@ -42,6 +42,7 @@ import io.jrdi.storage.repo.SpringBeanRepo;
 import io.jrdi.storage.repo.SpringBootAutoconfigRepo;
 import io.jrdi.storage.repo.SpringInjectRepo;
 import io.jrdi.storage.repo.sqlite.SqliteRepos;
+import io.jrdi.bytecode.M2LazyResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +50,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.nio.file.Path;
 
 /**
  * The MCP tool surface. Each public method corresponds to one MCP {@code tools/call}
@@ -80,9 +82,26 @@ public final class JrdiMcpService {
 
     private final Db db;
     private final ObjectMapper mapper = new ObjectMapper();
+    /**
+     * Lazy resolver for class facts pulled from the local Maven
+     * cache. Constructed lazily on the first {@code find_dubbo_services}
+     * or {@code callers_of} call that needs cross-jar facts. Null
+     * when the CLI / MCP server is invoked without
+     * {@code --m2-cache-dir} — in that case the resolver is a no-op
+     * and the query layer falls back to "implClassId = 0, best
+     * effort".
+     */
+    private final M2LazyResolver m2;
 
     public JrdiMcpService(Db db) {
+        this(db, null);
+    }
+
+    public JrdiMcpService(Db db, List<Path> m2Roots) {
         this.db = db;
+        this.m2 = (m2Roots == null || m2Roots.isEmpty())
+                ? null
+                : new M2LazyResolver(SqliteRepos.m2Repo(db), m2Roots);
         // Serialize Fqn as a string (toString = slashed form) so tool output
         // is round-trippable JSON.
         SimpleModule fqnModule = new SimpleModule();
@@ -107,6 +126,17 @@ public final class JrdiMcpService {
         Db db = Db.open(normalizeUrl(jdbcUrl));
         Migrator.migrate(db.dataSource());
         return new JrdiMcpService(db);
+    }
+
+    /**
+     * Open with a lazily-resolved m2 cache. The resolver extracts
+     * facts from jars under {@code m2Roots} on demand — only when
+     * a query actually needs cross-jar facts.
+     */
+    public static JrdiMcpService openSqliteWithM2(String jdbcUrl, List<Path> m2Roots) {
+        Db db = Db.open(normalizeUrl(jdbcUrl));
+        Migrator.migrate(db.dataSource());
+        return new JrdiMcpService(db, m2Roots);
     }
 
     private static String normalizeUrl(String url) {
@@ -288,9 +318,33 @@ public final class JrdiMcpService {
         List<DubboServiceRepo.Record> hits = iface.isEmpty()
                 ? scanAllDubboServices()
                 : repo.findByInterface(Fqn.fromDotted(iface));
+        // Lazy m2 resolution: if any service row has implClassId = 0
+        // (sentinel for "we didn't index the impl class"), try to
+        // resolve it via the m2 lazy resolver. The resolver writes
+        // the impl class facts into the m2_classes table; we then
+        // re-read dubbo_services to pick up the fresh implClassId
+        // — but in this iteration, the resolver only populates
+        // m2_classes (the "second-class" store); the
+        // dubbo_services.impl_class_id column is left at 0. The
+        // caller can still chain to findM2ClassesByFqn to see the
+        // resolved class. We surface a hint in the JSON response.
+        if (m2 != null && !iface.isEmpty()) {
+            boolean anyUnresolved = hits.stream()
+                    .anyMatch(r -> r.implClassId() == 0L);
+            if (anyUnresolved) {
+                m2.resolveImplOf(Fqn.fromDotted(iface));
+            }
+        }
         ObjectNode out = mapper.createObjectNode();
         out.set("services", mapper.valueToTree(hits));
         out.put("count", hits.size());
+        if (m2 != null && !iface.isEmpty() && hits.stream().anyMatch(r -> r.implClassId() == 0L)) {
+            // Surface a hint so the LLM knows it can chase the
+            // implementation through m2_classes.
+            out.put("implResolution", "lazy");
+            out.put("hint", "implClassId=0 — impl not indexed in main DB; " +
+                    "query 'm2_classes' via the m2 resolver to find it");
+        }
         return out;
     }
 

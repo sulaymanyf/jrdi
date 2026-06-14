@@ -451,6 +451,22 @@ known (annotation case), `implClassId` is non-zero; for XML it's `0` because the
 XML config only carries the bean name. The LLM joins with
 `find_spring_beans(name=ref_bean_name)` to find the impl class.
 
+**Lazy m2 resolution (0.2.0+):** if the server was started with
+`--m2-cache-dir <root>`, a query that finds a service with
+`implClassId = 0` triggers the lazy resolver to open the
+relevant m2 jar and extract its class facts. The response
+includes two extra fields when this happens:
+
+- `implResolution`: `"lazy"` — the impl was found via m2, not
+  the main index
+- `hint`: a string pointing the LLM at `m2_classes` to read the
+  resolved impl class
+
+The LLM can then ask `find_mybatis_statements` or `callers_of`
+on the resolved FQN to chain further. Without `--m2-cache-dir`,
+the resolver is a no-op and the `implClassId = 0` sentinel is
+returned as-is.
+
 **Request**
 
 ```json
