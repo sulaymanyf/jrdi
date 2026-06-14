@@ -264,4 +264,92 @@ class MavenPomParserTest {
         assertThat(junit.version()).isEqualTo("4.13.2");
         assertThat(junit.scope()).isEqualTo("test");
     }
+
+    @Test
+    void directDependencies_resolves_versions_via_scope_import_bom(
+            @TempDir Path tmp) throws IOException {
+        // Simulates the spring-boot-starter-parent pattern: a thin
+        // parent whose <dependencyManagement> is one entry — a BOM
+        // import — and the real versions live in the imported BOM.
+        Path m2 = tmp.resolve("m2");
+        Path bomDir = m2.resolve("org/springframework/boot/spring-boot-dependencies/3.2.0");
+        Files.createDirectories(bomDir);
+        Path bomPom = bomDir.resolve("spring-boot-dependencies-3.2.0.pom");
+        Files.writeString(bomPom, """
+                <?xml version="1.0"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-dependencies</artifactId>
+                  <version>3.2.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.projectlombok</groupId>
+                        <artifactId>lombok</artifactId>
+                        <version>1.18.30</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>junit</groupId>
+                        <artifactId>junit</artifactId>
+                        <version>4.13.2</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Path parentDir = m2.resolve("org/springframework/boot/spring-boot-starter-parent/3.2.0");
+        Files.createDirectories(parentDir);
+        Path parentPom = parentDir.resolve("spring-boot-starter-parent-3.2.0.pom");
+        Files.writeString(parentPom, """
+                <?xml version="1.0"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-parent</artifactId>
+                  <version>3.2.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-dependencies</artifactId>
+                        <version>3.2.0</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Path projectPom = tmp.resolve("pom.xml");
+        Files.writeString(projectPom, """
+                <?xml version="1.0"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>rds-pg</artifactId>
+                  <version>1.0.0</version>
+                  <parent>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-parent</artifactId>
+                    <version>3.2.0</version>
+                  </parent>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.projectlombok</groupId>
+                      <artifactId>lombok</artifactId>
+                    </dependency>
+                    <dependency>
+                      <groupId>junit</groupId>
+                      <artifactId>junit</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        List<MavenPomParser.Dependency> deps =
+                MavenPomParser.directDependencies(projectPom, List.of(m2));
+        assertThat(deps).hasSize(2);
+        assertThat(deps.get(0).version()).isEqualTo("1.18.30");
+        assertThat(deps.get(1).version()).isEqualTo("4.13.2");
+    }
 }

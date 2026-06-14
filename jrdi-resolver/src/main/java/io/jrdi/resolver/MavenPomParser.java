@@ -112,7 +112,10 @@ public final class MavenPomParser {
      * Walk this pom's {@code <dependencyManagement>} and (recursively)
      * the parent pom's {@code <dependencyManagement>} until the chain
      * ends. Parent resolution requires {@code m2Roots} to be non-empty.
-     * Returns a map of {@code groupId:artifactId} → resolved version.
+     * Also handles {@code <scope>import</scope> <type>pom</type>} BOM
+     * imports (used by spring-boot-starter-parent to import
+     * spring-boot-dependencies). Returns a map of
+     * {@code groupId:artifactId} → resolved version.
      */
     private static java.util.Map<String, String> collectDependencyManagement(
             Element root, Path selfPom, List<Path> m2Roots) {
@@ -123,9 +126,33 @@ public final class MavenPomParser {
                     String g = childText(dep, "groupId");
                     String a = childText(dep, "artifactId");
                     String v = childText(dep, "version");
-                    if (g != null && a != null && v != null && !v.startsWith("${")) {
-                        out.putIfAbsent(g + ":" + a, v);
+                    String type = childText(dep, "type");
+                    String scope = childText(dep, "scope");
+                    if (g == null || a == null || v == null) continue;
+                    if (v.startsWith("${")) continue;
+                    if ("pom".equals(type) && "import".equals(scope)) {
+                        // BOM import: walk the imported pom as if it
+                        // were our parent for mgmt purposes.
+                        Path bom = findPom(g, a, v, m2Roots);
+                        if (bom != null) {
+                            try {
+                                Document bdoc = parse(bom);
+                                var bm = collectDependencyManagement(
+                                        bdoc.getDocumentElement(), bom, m2Roots);
+                                for (var e : bm.entrySet()) {
+                                    out.putIfAbsent(e.getKey(), e.getValue());
+                                }
+                            } catch (IOException e) {
+                                System.err.println("WARN: failed to parse BOM "
+                                        + bom + ": " + e.getMessage());
+                            }
+                        } else {
+                            System.err.println("WARN: BOM import not in m2: "
+                                    + g + ":" + a + ":" + v);
+                        }
+                        continue;
                     }
+                    out.putIfAbsent(g + ":" + a, v);
                 }
             }
         }
@@ -138,29 +165,57 @@ public final class MavenPomParser {
                 String pg = childText(parent, "groupId");
                 String pa = childText(parent, "artifactId");
                 String pv = childText(parent, "version");
-                if (pg == null || pa == null || pv == null) continue;
-                if (pv.startsWith("${")) continue;
-                String rel = pg.replace('.', '/') + "/" + pa + "/" + pv + "/"
-                        + pa + "-" + pv + ".pom";
-                for (Path r : m2Roots) {
-                    Path p = r.resolve(rel);
-                    if (Files.isRegularFile(p)) {
-                        try {
-                            Document pdoc = parse(p);
-                            var pm = collectDependencyManagement(
-                                    pdoc.getDocumentElement(), p, m2Roots);
-                            // Parent entries lose to self.
-                            for (var e : pm.entrySet()) {
-                                out.putIfAbsent(e.getKey(), e.getValue());
-                            }
-                        } catch (IOException ignored) {}
-                        break;
+                if (pg == null || pa == null || pv == null) {
+                    System.err.println("WARN: parent reference in " + selfPom
+                            + " is missing groupId/artifactId/version: "
+                            + pg + ":" + pa + ":" + pv);
+                    break;
+                }
+                if (pv.startsWith("${")) {
+                    System.err.println("WARN: parent version in " + selfPom
+                            + " is unresolved: " + pv
+                            + " — BOM resolution limited");
+                    break;
+                }
+                Path found = findPom(pg, pa, pv, m2Roots);
+                if (found == null) {
+                    String rel = pg.replace('.', '/') + "/" + pa + "/" + pv + "/"
+                            + pa + "-" + pv + ".pom";
+                    System.err.println("WARN: parent pom not in m2: " + rel
+                            + " (searched: " + m2Roots + ")");
+                    break;
+                }
+                try {
+                    Document pdoc = parse(found);
+                    var pm = collectDependencyManagement(
+                            pdoc.getDocumentElement(), found, m2Roots);
+                    // Parent entries lose to self.
+                    for (var e : pm.entrySet()) {
+                        out.putIfAbsent(e.getKey(), e.getValue());
                     }
+                } catch (IOException e) {
+                    System.err.println("WARN: failed to parse parent pom " + found
+                            + ": " + e.getMessage());
                 }
                 break;  // only one parent
             }
         }
         return out;
+    }
+
+    /**
+     * Maven layout lookup: {@code <root>/<group-as-path>/<artifact>/<version>/<artifact>-<version>.pom}.
+     * Returns the first match across all m2 roots, or null if not found.
+     */
+    private static Path findPom(String g, String a, String v, List<Path> m2Roots) {
+        if (m2Roots.isEmpty()) return null;
+        String rel = g.replace('.', '/') + "/" + a + "/" + v + "/"
+                + a + "-" + v + ".pom";
+        for (Path r : m2Roots) {
+            Path p = r.resolve(rel);
+            if (Files.isRegularFile(p)) return p;
+        }
+        return null;
     }
 
     /**
@@ -242,15 +297,7 @@ public final class MavenPomParser {
     }
 
     private static Path findDepPom(Dependency dep, List<Path> m2Roots) {
-        // Maven layout: <root>/<group>/<artifact>/<version>/<artifact>-<version>.pom
-        String relPath = dep.groupId().replace('.', '/') + "/" +
-                dep.artifactId() + "/" + dep.version() + "/" +
-                dep.artifactId() + "-" + dep.version() + ".pom";
-        for (Path root : m2Roots) {
-            Path candidate = root.resolve(relPath);
-            if (Files.isRegularFile(candidate)) return candidate;
-        }
-        return null;
+        return findPom(dep.groupId(), dep.artifactId(), dep.version(), m2Roots);
     }
 
     // ─── helpers ───────────────────────────────────────────────────
